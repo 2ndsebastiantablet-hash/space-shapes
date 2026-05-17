@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>DROP//CHAIN Prototype</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #070714; font-family: Arial, Helvetica, sans-serif; touch-action: none; color: white; }
+    canvas { display: block; width: 100vw; height: 100vh; background: radial-gradient(circle at 50% 20%, #27275e, #070714 65%); cursor: none; }
+    #ui { position: fixed; top: 0; left: 0; width: 100%; padding: 14px; pointer-events: none; text-shadow: 0 2px 8px rgba(0,0,0,.65); font-weight: 800; z-index: 3; }
+    #score { font-size: 26px; }
+    #combo { font-size: 16px; color: #ffdf6b; margin-top: 3px; }
+    #danger { font-size: 13px; color: #ff8aa8; margin-top: 3px; opacity: .9; }
+    #hearts { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); font-size: 26px; letter-spacing: 4px; z-index: 4; text-shadow: 0 2px 8px rgba(0,0,0,.8); }
+    #best { position: fixed; right: 14px; top: 16px; font-size: 14px; opacity: .85; }
+    #pauseBtn { position: fixed; top: 52px; right: 14px; z-index: 20; pointer-events: auto; border: 0; border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 900; background: rgba(0,0,0,.62); color: white; box-shadow: 0 6px 18px rgba(0,0,0,.25); display: none; }
+    #pauseScreen { position: fixed; inset: 0; background: rgba(0,0,0,.74); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; padding: 24px; text-align: center; }
+    #startScreen, #gameOverScreen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(7,7,20,.92), rgba(7,7,20,.78)); z-index: 5; padding: 24px; text-align: center; }
+    h1 { margin: 0 0 8px; font-size: 42px; letter-spacing: -1px; }
+    .subtitle { max-width: 390px; opacity: .85; line-height: 1.35; margin-bottom: 18px; }
+    button { border: 0; border-radius: 999px; padding: 15px 24px; font-size: 18px; font-weight: 900; background: linear-gradient(135deg, #ffcf4a, #ff477e); color: #141414; box-shadow: 0 10px 28px rgba(255, 80, 130, .35); }
+    .hint { margin-top: 16px; font-size: 14px; opacity: .75; max-width: 390px; line-height: 1.35; }
+    #gameOverScreen { display: none; }
+    #finalScore { font-size: 34px; font-weight: 900; margin: 8px 0 4px; color: #ffdf6b; }
+    #deathReason { font-size: 18px; font-weight: 900; color: #ff8aa8; margin-bottom: 10px; }
+    #eventText { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(1); font-size: 32px; font-weight: 1000; color: white; text-align: center; opacity: 0; pointer-events: none; z-index: 4; text-shadow: 0 4px 18px rgba(0,0,0,.8); }
+    #debugBox { position: fixed; left: 10px; right: 10px; bottom: 10px; background: rgba(0,0,0,.88); color: #ff7070; padding: 10px; border: 1px solid #ff7070; border-radius: 10px; font: 12px monospace; z-index: 99; display: none; white-space: pre-wrap; max-height: 35vh; overflow: auto; }
+    #discoBar { position: fixed; left: 10px; top: 96px; width: 18px; height: 52vh; border: 2px solid rgba(255,255,255,.45); border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; z-index: 4; box-shadow: 0 0 18px rgba(255,0,255,.25); }
+    #discoFill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: linear-gradient(0deg,#00f5ff,#ff00ff,#fff200); box-shadow: 0 0 20px rgba(255,0,255,.85); }
+    #discoLabel { position: fixed; left: -24px; top: calc(96px + 26vh); transform: rotate(-90deg); transform-origin: center; font-size: 12px; font-weight: 900; color: #ffb3ff; letter-spacing: 1px; z-index: 4; text-shadow: 0 0 8px #ff00ff; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="ui">
+    <div id="score">0</div>
+    <div id="combo">COMBO x1</div>
+    <div id="danger">MINUTE 1 / DIFFICULTY 1%</div>
+    <div id="best">BEST: 0</div>
+  </div>
+  <button id="pauseBtn">⏸ PAUSE</button>
+  <div id="pauseScreen">
+    <h1>PAUSED</h1>
+    <div class="subtitle">The chaos is frozen.</div>
+    <button id="resumeBtn">RESUME</button>
+    <button id="mainMenuBtn" style="margin-top:12px; background:linear-gradient(135deg,#9be7ff,#ff8af3);">MAIN MENU</button>
+  </div>
+  <div id="hearts">❤️❤️❤️</div>
+  <div id="eventText">CHAIN!</div>
+  <div id="debugBox"></div>
+  <div id="discoBar"><div id="discoFill"></div></div>
+  <div id="discoLabel">DISCO QUEEN</div>
+
+  <div id="startScreen">
+    <h1>DROP//CHAIN</h1>
+    <div class="subtitle">Survive with 3 hearts. Build combos to fill the Disco Queen bar. When full, the arena becomes neon disco chaos.</div>
+    <button onclick="startGame()">PLAY NOW</button>
+    <div class="hint">Computer: move your mouse. Phone: drag. Disco Queen gives a temporary purple shield heart, faster bullets, stronger shots, slowed enemies, and huge score multipliers.</div>
+  </div>
+
+  <div id="gameOverScreen">
+    <h1>GAME OVER</h1>
+    <div id="finalScore">0</div>
+    <div id="deathReason">Destroyed by something.</div>
+    <div class="subtitle" id="finalText">The chain can get bigger.</div>
+    <button onclick="startGame()">RETRY</button>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const comboEl = document.getElementById('combo');
+  const dangerEl = document.getElementById('danger');
+  const heartsEl = document.getElementById('hearts');
+  const bestEl = document.getElementById('best');
+  const startScreen = document.getElementById('startScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+  const pauseScreen = document.getElementById('pauseScreen');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resumeBtn = document.getElementById('resumeBtn');
+  const mainMenuBtn = document.getElementById('mainMenuBtn');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalText = document.getElementById('finalText');
+  const deathReasonEl = document.getElementById('deathReason');
+  const eventText = document.getElementById('eventText');
+  const debugBox = document.getElementById('debugBox');
+  const discoFill = document.getElementById('discoFill');
+
+  let W = 0, H = 0, dpr = 1;
+  let player, objects, particles, bullets, revives, floatingTexts;
+  let score, combo, best, running, paused, worldSpeed, spawnTimer, bulletTimer, shake, chainTimer, slowTimer, runTime, invincibleTimer;
+  let discoCharge, discoActive, discoTimer, discoExtraLifeUsed;
+  let killStreak, killStreakTimer, scoreMultiplier, normalScoreMultiplier;
+  let pointerDown = false, targetX = 0, targetY = 0, lastTime = 0, eventToken = 0, nextObjectId = 1;
+
+  const MAX_OBJECTS = 125;
+  const MAX_PARTICLES = 240;
+  const MAX_BULLETS = 90;
+  const MAX_HEARTS = 3;
+  const DISCO_MAX = 100;
+  const SAFE_TOUCH_TYPES = new Set(['cube', 'crescent', 'heart']);
+  const HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
+  const OUTLINE_HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
+  const ENEMY_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull', 'diamond']);
+  const DEADLY_TOUCH_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull']);
+
+  // Audio map based on the uploaded order:
+  // 1 blaster, 2 enemy hit, 3-5 helper hits, 6 hurt, 7 death, 8 whoosh, 9 background music, 10 disco/invincible power.
+  const AUDIO_DATA = {
+    blaster: 'freesound_community-machine-gun-burst-43670 (1).mp3',
+    enemyHit: 'homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3',
+    helper1: 'freesound_community-pan-hit7-105402.mp3',
+    helper2: 'freesound_community-topf-3-103454.mp3',
+    helper3: 'freesound_community-topf-2-83324.mp3',
+    hurt: 'driken5482-retro-hurt-2-236675.mp3',
+    death: 'vinodadora-male-death-sound-128357.mp3',
+    whoosh: 'soundreality-whoosh-bamboo-389752.mp3',
+    bgMusic: 'vibehorn-disco-funk-background-507219.mp3',
+    discoPower: 'soundgallerybydmitrytaras-retro-501327.mp3'
+  };
+  const AUDIO_BASE = 'assets/audio/';
+  const AUDIO_SETTINGS = {
+    blaster: { volume: .18, cutoff: .18, pool: 6 },
+    enemyHit: { volume: .32, cutoff: .22, pool: 6 },
+    helper1: { volume: .28, cutoff: .24, pool: 3 },
+    helper2: { volume: .28, cutoff: .24, pool: 3 },
+    helper3: { volume: .28, cutoff: .24, pool: 3 },
+    hurt: { volume: .55, cutoff: .32, pool: 3 },
+    death: { volume: .62, cutoff: 1.1, pool: 2 },
+    whoosh: { volume: .16, cutoff: .35, pool: 3 },
+    discoPower: { volume: .55, cutoff: 1.0, pool: 2 }
+  };
+  const audioPools = {};
+  let audioUnlocked = false;
+  let bgMusic = null;
+  let lastWhooshTime = 0;
+  let deathSoundPlayed = false;
+  let audioCtx = null;
+  let lastUiSoundTime = 0;
+  let lastBombTickTime = 0;
+  let lastHealTickTime = 0;
+  let lastDiscoFillSoundTime = 0;
+
+  function initAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { audioCtx = null; }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+
+    // Try real uploaded audio files first. If they are not deployed with the page, Web Audio fallback still plays.
+    for (const name of Object.keys(AUDIO_SETTINGS)) {
+      const cfg = AUDIO_SETTINGS[name];
+      audioPools[name] = [];
+      for (let i = 0; i < cfg.pool; i++) {
+        const a = new Audio(AUDIO_BASE + AUDIO_DATA[name]);
+        a.preload = 'auto';
+        a.volume = cfg.volume;
+        a.onerror = () => { a.dataset.failed = '1'; };
+        audioPools[name].push(a);
+      }
+    }
+    bgMusic = new Audio(AUDIO_BASE + AUDIO_DATA.bgMusic);
+    bgMusic.loop = true;
+    bgMusic.volume = .24;
+    bgMusic.onerror = () => { bgMusic.dataset.failed = '1'; };
+  }
+
+  function playSfx(name, overrides = {}) {
+    if (!audioUnlocked) return;
+
+    const pool = audioPools[name];
+    const cfg = AUDIO_SETTINGS[name] || {};
+    const playFallback = () => playSynthSfx(name, overrides);
+
+    if (!pool || !pool.length) {
+      playFallback();
+      return;
+    }
+
+    const a = pool.find(x => (x.paused || x.ended) && x.dataset.failed !== '1') || pool.find(x => x.dataset.failed !== '1');
+    if (!a) {
+      playFallback();
+      return;
+    }
+
+    try {
+      a.pause();
+      a.currentTime = 0;
+      a.volume = overrides.volume ?? cfg.volume ?? .35;
+      a.playbackRate = overrides.rate ?? 1;
+      const playPromise = a.play();
+      if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(playFallback);
+      const cutoff = overrides.cutoff ?? cfg.cutoff;
+      if (cutoff) {
+        setTimeout(() => { try { a.pause(); a.currentTime = 0; } catch(e) {} }, cutoff * 1000);
+      }
+    } catch(e) {
+      playFallback();
+    }
+  }
+
+  function playTone(freq = 440, duration = .12, type = 'square', volume = .18, slideTo = null, delay = 0) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + delay;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + duration);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(3200, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(volume, t + .012);
+    gain.gain.exponentialRampToValueAtTime(.0001, t + duration);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + duration + .04);
+  }
+
+  function playNoise(duration = .15, volume = .18, filterFreq = 900, filterType = 'bandpass', delay = 0) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + delay;
+    const bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate * duration));
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    const src = audioCtx.createBufferSource();
+    const filter = audioCtx.createBiquadFilter();
+    const gain = audioCtx.createGain();
+    filter.type = filterType;
+    filter.frequency.setValueAtTime(filterFreq, t);
+    filter.Q.setValueAtTime(1.2, t);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(.0001, t + duration);
+    src.buffer = buffer;
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    src.start(t);
+    src.stop(t + duration);
+  }
+
+  function playChord(freqs, duration = .18, type = 'triangle', volume = .08) {
+    freqs.forEach((f, i) => playTone(f, duration, type, volume, null, i * .012));
+  }
+
+  function playSynthSfx(name, overrides = {}) {
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    if (name === 'blaster') { playNoise(.045, .045, 2600, 'highpass'); playTone(980, .055, 'square', .08, 210); }
+    else if (name === 'enemyHit') { playNoise(.10, .12, 720); playTone(220, .07, 'sawtooth', .06, 120); }
+    else if (name === 'helper1' || name === 'helper2' || name === 'helper3') { playTone(620 + Math.random()*160, .08, 'triangle', .12, 330); playNoise(.05, .035, 1800, 'bandpass'); }
+    else if (name === 'hurt') { playNoise(.12, .13, 420); playTone(260, .18, 'sawtooth', .16, 75); }
+    else if (name === 'death') { playNoise(.26, .13, 260, 'lowpass'); playTone(190, .58, 'sawtooth', .17, 42); playTone(90, .42, 'sine', .12, 35, .08); }
+    else if (name === 'whoosh') { playNoise(.16, .055, 1400, 'bandpass'); }
+    else if (name === 'discoPower') { playChord([330, 495, 660], .18, 'triangle', .08); playTone(880, .22, 'triangle', .11, 1320, .12); playNoise(.18, .045, 2500, 'highpass', .08); }
+    else if (name === 'heartAppear') { playTone(420, .10, 'triangle', .08, 620); playTone(620, .14, 'triangle', .08, 840, .08); }
+    else if (name === 'heartPulse') { playTone(520, .08, 'sine', .075, 690); }
+    else if (name === 'heartGain') { playChord([523, 659, 784], .22, 'triangle', .09); playTone(1046, .18, 'triangle', .08, null, .12); }
+    else if (name === 'healCancel') { playTone(360, .12, 'triangle', .07, 170); }
+    else if (name === 'scoreLoss') { playTone(240, .16, 'sawtooth', .10, 90); }
+    else if (name === 'combo') { playTone(700, .07, 'triangle', .08, 920); playTone(920, .09, 'triangle', .07, 1180, .07); }
+    else if (name === 'multiplier') { playChord([440, 660, 880], .16, 'triangle', .08); playNoise(.08, .035, 2200, 'highpass'); }
+    else if (name === 'bombTick') { playTone(580, .055, 'square', .065, 460); }
+    else if (name === 'bombExplode') { playNoise(.24, .18, 180, 'lowpass'); playTone(110, .20, 'sawtooth', .13, 55); }
+    else if (name === 'knockback') { playNoise(.11, .10, 520); playTone(160, .09, 'square', .06, 260); }
+    else if (name === 'cubeBump') { playTone(300, .07, 'triangle', .09, 220); }
+    else if (name === 'pentagonPulse') { playTone(180, .16, 'sine', .075, 120); playNoise(.08, .035, 340); }
+    else if (name === 'hexSplit') { playNoise(.11, .09, 900); playTone(360, .08, 'square', .07, 610); }
+    else if (name === 'hexVanish') { playTone(420, .11, 'triangle', .07, 180); }
+    else if (name === 'starWarn') { playTone(900, .08, 'square', .07, 900); playTone(900, .08, 'square', .07, 900, .09); }
+    else if (name === 'starDash') { playNoise(.13, .10, 1900, 'bandpass'); playTone(500, .08, 'sawtooth', .07, 1000); }
+    else if (name === 'skullAura') { playNoise(.14, .055, 220, 'lowpass'); }
+    else if (name === 'curseApply') { playTone(130, .18, 'sawtooth', .09, 65); playNoise(.15, .08, 300); }
+    else if (name === 'curseBreak') { playChord([392, 523, 784], .18, 'triangle', .075); }
+    else if (name === 'laserCharge') { playTone(500, .18, 'triangle', .075, 1200); }
+    else if (name === 'laserFire') { playNoise(.12, .12, 2800, 'highpass'); playTone(1200, .09, 'square', .07, 600); }
+    else if (name === 'crescent') { playChord([349, 523, 698], .24, 'sine', .07); }
+    else if (name === 'ui') { playTone(520, .055, 'triangle', .06, 720); }
+    else if (name === 'pause') { playTone(440, .08, 'triangle', .06, 300); }
+    else if (name === 'resume') { playTone(300, .08, 'triangle', .06, 520); }
+    else if (name === 'gameStart') { playChord([392, 494, 784], .20, 'triangle', .075); }
+    else if (name === 'newBest') { playChord([523, 659, 784, 1046], .28, 'triangle', .075); }
+  }
+
+  function playHelperHit() {
+    const picks = ['helper1', 'helper2', 'helper3'];
+    playSfx(picks[Math.floor(Math.random() * picks.length)]);
+  }
+
+  function startBackgroundMusic() {
+    if (!audioUnlocked) return;
+    // Only use the real imported background music. No generated backup music.
+    if (bgMusic && bgMusic.dataset.failed !== '1') bgMusic.play().catch(() => {});
+  }
+
+  function pauseBackgroundMusic() {
+    if (bgMusic) bgMusic.pause();
+  }
+
+  function resumeBackgroundMusic() {
+    if (audioUnlocked && bgMusic && running && !paused && bgMusic.dataset.failed !== '1') bgMusic.play().catch(() => {});
+  }
+
+  best = Number(localStorage.getItem('dropchain_best') || 0);
+  bestEl.textContent = 'BEST: ' + best;
+
+  window.onerror = function(message, source, lineno, colno) {
+    debugBox.style.display = 'block';
+    debugBox.textContent = 'BUG FOUND:\n' + message + '\nLine: ' + lineno + ' Column: ' + colno;
+  };
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(320, window.innerWidth);
+    H = Math.max(480, window.innerHeight);
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function rand(min, max) { return Math.random() * (max - min) + min; }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function getMinuteLevel() { return 1 + Math.floor(runTime / 60); }
+  function getDifficulty() {
+    // Difficulty is now a simple percent-style value: 1%, then +2 every minute.
+    return 1 + Math.floor(runTime / 60) * 2;
+  }
+
+  function getDifficultyFactor() {
+    // Converts the percent-style difficulty into a gentle gameplay speed/spawn factor.
+    return 1 + (getDifficulty() - 1) * 0.08;
+  }
+  function isOnScreen(o, margin = 0) { return o && o.x > -margin && o.x < W + margin && o.y > -margin && o.y < H + margin; }
+
+  function reset() {
+    debugBox.style.display = 'none';
+    player = { x: W / 2, y: H * .72, r: 21, vx: 0, vy: 0, hearts: 3, healProgress: 0 };
+    targetX = player.x;
+    targetY = player.y;
+    objects = [];
+    particles = [];
+    bullets = [];
+    revives = [];
+    floatingTexts = [];
+    score = 0;
+    combo = 1;
+    worldSpeed = 80;
+    spawnTimer = 0;
+    bulletTimer = 0;
+    shake = 0;
+    chainTimer = 0;
+    slowTimer = 0;
+    runTime = 0;
+    invincibleTimer = 0;
+    killStreak = 0;
+    killStreakTimer = 0;
+    scoreMultiplier = 1;
+    normalScoreMultiplier = 1;
+    discoCharge = 0;
+    discoActive = false;
+    discoTimer = 0;
+    discoExtraLifeUsed = false;
+    paused = false;
+    pauseScreen.style.display = 'none';
+    pauseBtn.textContent = '⏸ PAUSE';
+    updateDiscoBar();
+    updateHearts();
+  }
+
+  window.startGame = function() {
+    initAudio();
+    reset();
+    deathSoundPlayed = false;
+    startBackgroundMusic();
+    playSfx('gameStart');
+    running = true;
+    paused = false;
+    pauseScreen.style.display = 'none';
+    pauseBtn.style.display = 'block';
+    pauseBtn.textContent = '⏸ PAUSE';
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+    showEvent('GO!');
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  };
+
+  function updateDiscoBar() {
+    discoFill.style.height = clamp(discoCharge || 0, 0, DISCO_MAX) + '%';
+  }
+
+  function addDiscoCharge(amount) {
+    if (discoActive) return;
+    discoCharge = clamp((discoCharge || 0) + amount, 0, DISCO_MAX);
+    const now = performance.now();
+    if (now - lastDiscoFillSoundTime > 250 && discoCharge < DISCO_MAX) { playSfx('combo'); lastDiscoFillSoundTime = now; }
+    updateDiscoBar();
+    if (discoCharge >= DISCO_MAX) activateDiscoQueen();
+  }
+
+  function activateDiscoQueen() {
+    if (discoActive) return;
+    discoActive = true;
+    discoTimer = 12;
+    discoCharge = DISCO_MAX;
+    discoExtraLifeUsed = false;
+    showEvent('DISCO QUEEN!');
+    playSfx('discoPower');
+    shake = 28;
+    explode(W / 2, H / 2, '#ff00ff', 80);
+    updateDiscoBar();
+    updateHearts();
+  }
+
+  function updateHearts() {
+    let text = '';
+    for (let i = 0; i < MAX_HEARTS; i++) {
+      if (i < player.hearts) text += '❤️';
+      else if (i === player.hearts && player.healProgress > 0) {
+        if (player.healProgress >= 3) text += '💗';
+        else if (player.healProgress >= 2) text += '💓';
+        else text += '💔';
+      } else text += '🖤';
+    }
+    if (discoActive) text += '💜';
+    heartsEl.textContent = text;
+  }
+
+  function addFloatingText(text, x, y, color = '#ffffff', size = 24) {
+    floatingTexts.push({ text, x, y, color, size, life: 1, max: 1, vy: -45 });
+  }
+
+  function showEvent(text) {
+    const token = ++eventToken;
+    eventText.textContent = text;
+    eventText.style.transition = 'none';
+    eventText.style.opacity = '1';
+    eventText.style.transform = 'translate(-50%, -50%) scale(1.15)';
+    setTimeout(() => {
+      if (token !== eventToken) return;
+      eventText.style.transition = 'opacity .45s, transform .45s';
+      eventText.style.opacity = '0';
+      eventText.style.transform = 'translate(-50%, -50%) scale(.82)';
+    }, 120);
+  }
+
+  function endGame(reason = 'Destroyed by the chaos.') {
+    if (!deathSoundPlayed) { playSfx('death'); deathSoundPlayed = true; }
+    pauseBackgroundMusic();
+    running = false;
+    pauseBtn.style.display = 'none';
+    showEvent('GAME OVER');
+    const oldBest = best;
+    best = Math.max(best, Math.floor(score));
+    if (best > oldBest) playSfx('newBest');
+    localStorage.setItem('dropchain_best', best);
+    bestEl.textContent = 'BEST: ' + best;
+    finalScoreEl.textContent = Math.floor(score);
+    deathReasonEl.textContent = reason;
+    finalText.textContent = combo >= 15 ? 'That chain was wild. Run it back.' : 'The chain can get bigger.';
+    setTimeout(() => { gameOverScreen.style.display = 'flex'; }, 220);
+  }
+
+  function damagePlayer(reason) {
+    if (invincibleTimer > 0 || !running) return;
+    if (discoActive) {
+      invincibleTimer = .35;
+      shake = 18;
+      showEvent('DISCO SHIELD!');
+      playSfx('discoPower');
+      explode(player.x, player.y, '#ff00ff', 28);
+      updateHearts();
+      return;
+    }
+    playSfx('hurt');
+    score = Math.max(0, Math.floor(score * 0.85) - 100);
+    addFloatingText('-SCORE', player.x, player.y - 35, '#ff477e', 24);
+    player.hearts -= 1;
+    player.healProgress = 0;
+    updateHearts();
+    shake = 22;
+    invincibleTimer = 1.05;
+    explode(player.x, player.y, '#ff477e', 42);
+    playSfx('scoreLoss');
+    showEvent('-1 HEART');
+    if (player.hearts <= 0) endGame(reason);
+  }
+
+  function makeObject(type, x, y, r) {
+    const minute = getMinuteLevel();
+    const obj = {
+      id: nextObjectId++,
+      type, x, y, r,
+      vx: 0, vy: 0,
+      angle: rand(0, Math.PI * 2),
+      hit: false,
+      active: false,
+      laserTimer: 0,
+      timer: rand(.8, 2.2),
+      cursed: false,
+      homing: false,
+      phase: 'float',
+      entered: false,
+      maxHp: ENEMY_TYPES.has(type) ? 1 + Math.floor((minute - 1) * .75) : 999,
+      hp: ENEMY_TYPES.has(type) ? 1 + Math.floor((minute - 1) * .75) : 999,
+      healPulseTimer: rand(.8, 1.4),
+      hexGen: 0,
+      dashCount: 0,
+      splitDone: false,
+      exitAfterDashes: false,
+      homingTimer: 0,
+      homingExit: false,
+      homingSourceId: null
+    };
+    if (type === 'cube') { obj.vx = rand(-80, 80); obj.vy = rand(25, 75); }
+    if (type === 'heart') { obj.vx = rand(-70, 70); obj.vy = rand(20, 65); obj.r = Math.max(24, r); }
+    if (type === 'crescent') { obj.vx = rand(-60, 60); obj.vy = rand(18, 60); obj.r = Math.max(22, r); }
+    if (type === 'star') { obj.vx = rand(-90, 90); obj.vy = rand(85, 145); obj.timer = rand(1.4, 2.6); }
+    if (type === 'skull') { obj.vx = rand(-35, 35); obj.vy = rand(55, 95); obj.r = Math.max(24, r); }
+    if (type === 'hexagon') { obj.r = Math.max(24, r); }
+    if (type === 'diamond') { obj.r = Math.max(24, r); obj.timer = rand(1.7, 3.2); }
+    return obj;
+  }
+
+  function spawnObject() {
+    if (objects.length > MAX_OBJECTS) return;
+    const minute = getMinuteLevel();
+    const roll = Math.random();
+    let type = 'cube';
+
+    if (minute <= 1) {
+      if (roll < .40) type = 'triangle';
+      else if (roll < .66) type = 'circle';
+      else if (roll < .78) type = 'cube';
+      else if (roll < .815) type = 'heart';
+      else if (roll < .975) type = 'diamond';
+      else type = 'crescent';
+    } else if (minute === 2) {
+      if (roll < .28) type = 'triangle';
+      else if (roll < .53) type = 'circle';
+      else if (roll < .69) type = 'pentagon';
+      else if (roll < .75) type = 'star';
+      else if (roll < .84) type = 'cube';
+      else if (roll < .95) type = 'diamond';
+      else if (roll < .982) type = 'heart';
+      else type = 'crescent';
+    } else {
+      if (roll < .24) type = 'triangle';
+      else if (roll < .47) type = 'circle';
+      else if (roll < .61) type = 'pentagon';
+      else if (roll < .74) type = 'hexagon';
+      else if (roll < .80) type = 'star';
+      else if (roll < .89) type = 'skull';
+      else if (roll < .96) type = 'diamond';
+      else if (roll < .992) type = 'heart';
+      else type = 'crescent';
+    }
+
+    const size = type === 'cube' ? rand(22, 34) : rand(18, 28);
+    const spawned = makeObject(type, rand(35, W - 35), -70, size);
+    objects.push(spawned);
+    if (type === 'heart') playSfx('heartAppear');
+  }
+
+  function explode(x, y, color, count = 24) {
+    const room = Math.max(0, MAX_PARTICLES - particles.length);
+    count = Math.min(count, room);
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, Math.PI * 2);
+      const s = rand(70, 340);
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(.35, .85), max: .85, color, r: rand(2, 6) });
+    }
+  }
+
+  function firePlayerBullet() {
+    if (bullets.length >= MAX_BULLETS) return;
+    playSfx('blaster');
+    bullets.push({ x: player.x, y: player.y - player.r - 8, vx: 0, vy: discoActive ? -820 : -520, r: discoActive ? 7 : 5, life: 1.8, dead: false, damage: discoActive ? 5 : 1 });
+  }
+
+  function scheduleRevive(o) {
+    if (!o || !o.cursed || o.type === 'skull' || HELPER_TYPES.has(o.type)) return;
+    revives.push({ type: o.type, x: clamp(o.x + rand(-40, 40), 35, W - 35), y: clamp(o.y + rand(-40, 40), 40, H - 80), r: o.r, timer: 1.1, homing: o.homing });
+    showEvent('REVIVE CURSE!');
+  }
+
+  function awardEnemyKill(o, base = 35) {
+    // Multiplier now means multiple kills within 2 seconds.
+    // 1 kill = no multiplier, 2+ fast kills = x2, x3, x4, etc.
+    killStreak = killStreakTimer > 0 ? killStreak + 1 : 1;
+    killStreakTimer = 2;
+    let newMultiplier = killStreak >= 2 ? Math.min(10, killStreak) : 1;
+    if (discoActive) newMultiplier = Math.min(10, scoreMultiplier + 1);
+    if (newMultiplier > scoreMultiplier) {
+      playSfx('multiplier');
+      if (!discoActive) normalScoreMultiplier = newMultiplier;
+      scoreMultiplier = newMultiplier;
+      score = Math.max(1, Math.floor(score * scoreMultiplier));
+      addFloatingText(scoreMultiplier + 'x MULTIPLIER!', o.x, o.y - 30, discoActive ? '#ff00ff' : '#ffdf6b', 28);
+      showEvent(scoreMultiplier + 'x MULTIPLIER!');
+    }
+    score += Math.floor(base * scoreMultiplier * (discoActive ? 3 : 1));
+    addFloatingText('+' + Math.floor(base * scoreMultiplier), o.x, o.y, '#ffe680', 18);
+    if (!discoActive && killStreak >= 2) addDiscoCharge(Math.min(8, 2 + killStreak));
+  }
+
+  function killEnemy(o, color = '#66f7ff') {
+    if (!o || o.hit || HELPER_TYPES.has(o.type)) return;
+    if (o.type === 'skull') clearHomingFromSkull(o);
+    scheduleRevive(o);
+    o.hit = true;
+    awardEnemyKill(o, 35);
+    explode(o.x, o.y, color, 14);
+  }
+
+  function clearHomingFromSkull(skull) {
+    for (const other of objects) {
+      if (!other || other.hit) continue;
+      if (other.homingSourceId === skull.id) {
+        other.homing = false;
+        other.cursed = false;
+        other.homingExit = false;
+        other.homingTimer = 0;
+        other.homingSourceId = null;
+        playSfx('curseBreak');
+        addFloatingText('CURSE BROKEN', other.x, other.y, '#c4f2ff', 16);
+      }
+    }
+  }
+
+  function damageEnemy(o, amount = 1, color = '#ffe680') {
+    if (!o || o.hit || HELPER_TYPES.has(o.type) || !ENEMY_TYPES.has(o.type)) return;
+    playSfx('enemyHit');
+    if (o.type === 'star') {
+      explode(o.x, o.y, '#fff27a', 5);
+      return;
+    }
+    o.hp -= amount;
+    explode(o.x, o.y, color, 4);
+    if (o.hp <= 0) {
+      if (o.type === 'circle') triggerExplosion(o);
+      else if (o.type === 'star') return;
+      if (o.type === 'hexagon') splitHexagon(o);
+      else killEnemy(o, color);
+    }
+  }
+
+  function splitHexagon(o) {
+    if (!o || o.hit || !o.entered || o.splitDone) return;
+    o.splitDone = true;
+    scheduleRevive(o);
+    o.hit = true;
+    combo += 1;
+    const nextGen = (o.hexGen || 0) + 1;
+    playSfx('hexSplit');
+    if (nextGen < 5 && objects.length < MAX_OBJECTS - 2) {
+      for (let i = 0; i < 2; i++) {
+        const child = makeObject('hexagon', o.x + rand(-30, 30), o.y + rand(-30, 30), Math.max(7, o.r * .58));
+        child.vx = rand(-120, 120);
+        child.vy = rand(-90, 90);
+        child.cursed = o.cursed;
+        child.homing = o.homing;
+        child.entered = true;
+        child.hexGen = nextGen;
+        child.splitDone = false;
+        child.maxHp = Math.max(1, o.maxHp - nextGen);
+        child.hp = child.maxHp;
+        objects.push(child);
+      }
+      showEvent('HEX SPLIT ' + nextGen + '!');
+    } else {
+      playSfx('hexVanish');
+      showEvent('HEX DIED!');
+    }
+    explode(o.x, o.y, '#7dff91', 18);
+  }
+
+  function fireLaser(o) {
+    if (!o || o.hit || !o.entered) return;
+    playSfx('laserFire');
+    o.laserTimer = .38;
+    shake = 10;
+    explode(o.x, o.y, '#7be8ff', 14);
+    let laserHits = 0;
+    const snapshot = objects.slice();
+    for (const other of snapshot) {
+      if (!other || other.hit || other === o || HELPER_TYPES.has(other.type) || !other.entered) continue;
+      if (Math.abs(other.y - o.y) < 22) {
+        laserHits++;
+        damageEnemy(other, 2, '#7be8ff');
+      }
+    }
+    if (laserHits > 0) {
+      combo += laserHits;
+      const laserScore = Math.floor(laserHits * 30 * scoreMultiplier);
+      score += laserScore;
+      if (laserHits > 1) addDiscoCharge(4 + Math.min(10, laserHits * 2));
+      addFloatingText(laserHits + ' LASER HIT' + (laserHits > 1 ? 'S' : '') + '!', o.x, o.y - 35, '#7be8ff', 24);
+      addFloatingText('+' + laserScore, o.x, o.y, '#ffffff', 18);
+      showEvent(laserHits > 1 ? 'LASER CHAIN!' : 'LASER HIT!');
+    } else {
+      showEvent('LASER!');
+    }
+  }
+
+  function activateCrescent(o) {
+    if (!o || o.hit) return;
+    playSfx('crescent');
+    o.hit = true;
+    slowTimer = 2.2;
+    combo += 2;
+    explode(o.x, o.y, '#c4f2ff', 28);
+    showEvent('TIME SLOW');
+  }
+
+  function triggerExplosion(source) {
+    if (!source || source.hit || !source.entered) return;
+    scheduleRevive(source);
+    source.hit = true;
+    chainTimer = 1.25;
+    shake = 16;
+    let chainCount = 0;
+    playSfx('bombExplode');
+    explode(source.x, source.y, '#ffdf6b', 45);
+
+    const killRadius = 70;
+    const knockRadius = 165;
+    if (Math.hypot(player.x - source.x, player.y - source.y) < killRadius + player.r) {
+      damagePlayer('Destroyed by bomb splash damage.');
+    }
+
+    const snapshot = objects.slice();
+    for (const o of snapshot) {
+      if (!o || o.hit || o === source || HELPER_TYPES.has(o.type) || !o.entered) continue;
+      const dx = o.x - source.x;
+      const dy = o.y - source.y;
+      const d = Math.max(1, Math.hypot(dx, dy));
+      if (d < knockRadius) {
+        chainCount++;
+        if (o.type === 'circle') {
+          triggerExplosion(o);
+        } else if (d < killRadius) {
+          damageEnemy(o, 2, o.type === 'triangle' ? '#ff477e' : '#66f7ff');
+        } else {
+          const force = (1 - d / knockRadius) * 520;
+          o.vx += (dx / d) * force;
+          o.vy += (dy / d) * force;
+          playSfx('knockback');
+          addFloatingText('KNOCKBACK!', o.x, o.y, '#ffb000', 16);
+        }
+      }
+    }
+    if (chainCount > 0) {
+      combo = chainCount;
+      const comboScore = Math.floor(chainCount * 25 * scoreMultiplier);
+      score += comboScore;
+      addDiscoCharge(10 + chainCount * 2);
+      addFloatingText(chainCount + ' CHAIN COMBO!', source.x, source.y - 35, '#ffdf6b', 30);
+      addFloatingText('+' + comboScore, source.x, source.y, '#ffffff', 20);
+      showEvent(chainCount + ' CHAIN COMBO!');
+    } else {
+      combo = 1;
+      addFloatingText('BOOM!', source.x, source.y - 20, '#ffb000', 22);
+      showEvent('BOOM!');
+    }
+  }
+
+  function skullCorrupt(o, skull = null) {
+    if (!o || o.hit || o.type === 'skull' || HELPER_TYPES.has(o.type) || !o.entered) return;
+    if (o.homing && o.homingSourceId === (skull ? skull.id : o.homingSourceId)) return;
+    o.homing = true;
+    o.cursed = true;
+    o.homingExit = false;
+    o.homingTimer = 6;
+    o.homingSourceId = skull ? skull.id : null;
+    explode(o.x, o.y, '#111111', 8);
+    playSfx('curseApply');
+    showEvent('HOMING CURSE!');
+  }
+
+  function drawPolygon(points, r) {
+    ctx.beginPath();
+    for (let i = 0; i < points; i++) {
+      const a = (Math.PI * 2 / points) * i - Math.PI / 2;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  function drawPlayer() {
+    ctx.save();
+    const bob = Math.sin(performance.now() / 120) * 1.5;
+    ctx.globalAlpha = invincibleTimer > 0 && Math.floor(performance.now() / 90) % 2 === 0 ? .35 : 1;
+    ctx.shadowBlur = 26; ctx.shadowColor = '#ffdf00';
+    const g = ctx.createRadialGradient(player.x - 6, player.y - 8 + bob, 3, player.x, player.y + bob, player.r + 13);
+    g.addColorStop(0, '#fff9a8'); g.addColorStop(.45, '#ffdf00'); g.addColorStop(1, '#ff9f00');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(player.x, player.y + bob, player.r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.ellipse(player.x - 7, player.y - 6 + bob, 3.2, 5.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(player.x + 7, player.y - 6 + bob, 3.2, 5.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#111';
+    ctx.beginPath(); ctx.arc(player.x, player.y + 1 + bob, 10, 0.18 * Math.PI, 0.82 * Math.PI); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBaseOutline(o) {
+    ctx.save();
+    const isHelper = OUTLINE_HELPER_TYPES.has(o.type);
+    const isDanger = ENEMY_TYPES.has(o.type) || DEADLY_TOUCH_TYPES.has(o.type);
+    if (!isHelper && !isDanger) { ctx.restore(); return; }
+    ctx.lineWidth = isHelper ? 9 : 5;
+    ctx.strokeStyle = isHelper ? '#ffd1f1' : '#ff2a2a';
+    ctx.shadowBlur = isHelper ? 24 : 12;
+    ctx.shadowColor = isHelper ? '#ff9ee8' : '#ff2a2a';
+    if (o.type === 'circle' || o.type === 'skull' || o.type === 'heart') { ctx.beginPath(); ctx.arc(0, 0, o.r + 5, 0, Math.PI * 2); ctx.stroke(); }
+    else if (o.type === 'triangle') { ctx.beginPath(); ctx.moveTo(0, -o.r - 6); ctx.lineTo(o.r + 6, o.r + 6); ctx.lineTo(-o.r - 6, o.r + 6); ctx.closePath(); ctx.stroke(); }
+    else if (o.type === 'cube') { ctx.strokeRect(-o.r * .82, -o.r * .82, o.r * 1.64, o.r * 1.64); }
+    else if (o.type === 'diamond') { ctx.beginPath(); ctx.ellipse(0, 0, o.r * 1.35, o.r * .72, 0, 0, Math.PI * 2); ctx.stroke(); }
+    else if (o.type === 'pentagon') { drawPolygon(5, o.r + 6); ctx.stroke(); }
+    else if (o.type === 'hexagon') { drawPolygon(6, o.r + 6); ctx.stroke(); }
+    else if (o.type === 'star') { ctx.beginPath(); for (let i = 0; i < 10; i++) { const rr = i % 2 === 0 ? o.r + 6 : o.r * .45 + 6; const a = (Math.PI / 5) * i - Math.PI / 2; const x = Math.cos(a) * rr; const y = Math.sin(a) * rr; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.stroke(); }
+    else if (o.type === 'crescent') { drawCrescentPath(o.r + 5); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function drawCurseOutline(o) {
+    if (!o.cursed && !o.homing) return;
+    ctx.save();
+    ctx.lineWidth = o.homing ? 10 : 8;
+    ctx.strokeStyle = '#000000';
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = o.homing ? '#ff003c' : '#000000';
+    if (o.type === 'circle' || o.type === 'skull' || o.type === 'heart') { ctx.beginPath(); ctx.arc(0, 0, o.r + 5, 0, Math.PI * 2); ctx.stroke(); }
+    else if (o.type === 'triangle') { ctx.beginPath(); ctx.moveTo(0, -o.r - 6); ctx.lineTo(o.r + 6, o.r + 6); ctx.lineTo(-o.r - 6, o.r + 6); ctx.closePath(); ctx.stroke(); }
+    else if (o.type === 'diamond') { ctx.beginPath(); ctx.ellipse(0, 0, o.r * 1.25, o.r * .62, 0, 0, Math.PI * 2); ctx.stroke(); }
+    else if (o.type === 'pentagon') { drawPolygon(5, o.r + 6); ctx.stroke(); }
+    else if (o.type === 'hexagon') { drawPolygon(6, o.r + 6); ctx.stroke(); }
+
+    ctx.restore();
+  }
+
+  function drawCrescentPath(r) {
+    ctx.beginPath();
+    ctx.moveTo(r * .35, -r);
+    ctx.bezierCurveTo(-r * .95, -r * .65, -r * .95, r * .65, r * .35, r);
+    ctx.bezierCurveTo(-r * .25, r * .45, -r * .25, -r * .45, r * .35, -r);
+    ctx.closePath();
+  }
+
+  function drawHeartShape(r) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * .58);
+    ctx.bezierCurveTo(-r * 1.25, -r * .15, -r * .62, -r * 1.05, 0, -r * .45);
+    ctx.bezierCurveTo(r * .62, -r * 1.05, r * 1.25, -r * .15, 0, r * .58);
+    ctx.closePath();
+  }
+
+  function drawObject(o) {
+    if (!o || o.hit) return;
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.rotate(o.angle);
+    drawBaseOutline(o);
+    drawCurseOutline(o);
+    ctx.lineWidth = 4;
+
+    if (o.type === 'circle') {
+      ctx.fillStyle = '#ffb000'; ctx.shadowBlur = 20; ctx.shadowColor = '#ff8c00'; ctx.beginPath(); ctx.arc(0, 0, o.r, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#ff3b3b'; ctx.stroke();
+      ctx.fillStyle = '#5a1200'; ctx.font = `bold ${Math.floor(o.r * 1.2)}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('✕', 0, 1);
+    } else if (o.type === 'triangle') {
+      ctx.fillStyle = 'rgba(20,0,10,.95)'; ctx.strokeStyle = '#ff477e'; ctx.shadowBlur = 20; ctx.shadowColor = '#ff477e'; ctx.beginPath(); ctx.moveTo(0, -o.r); ctx.lineTo(o.r, o.r); ctx.lineTo(-o.r, o.r); ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (o.type === 'cube') {
+      ctx.fillStyle = 'rgba(0, 210, 255, .18)'; ctx.strokeStyle = '#00d7ff'; ctx.shadowBlur = 20; ctx.shadowColor = '#00d7ff'; ctx.strokeRect(-o.r * .72, -o.r * .72, o.r * 1.44, o.r * 1.44); ctx.fillRect(-o.r * .72, -o.r * .72, o.r * 1.44, o.r * 1.44);
+    } else if (o.type === 'heart') {
+      const pulse = 72 + Math.sin(performance.now() / 180) * 12;
+      ctx.globalAlpha = .2; ctx.strokeStyle = '#ff6fb1'; ctx.lineWidth = 5; drawHeartShape(pulse * .35); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ff5fae'; ctx.strokeStyle = '#ffd1e8'; ctx.shadowBlur = 22; ctx.shadowColor = '#ff5fae'; drawHeartShape(o.r); ctx.fill(); ctx.stroke();
+    } else if (o.type === 'diamond') {
+      ctx.fillStyle = 'rgba(123,232,255,.18)'; ctx.strokeStyle = o.laserTimer > 0 ? '#ffffff' : '#7be8ff'; ctx.shadowBlur = 18; ctx.shadowColor = '#7be8ff'; ctx.beginPath(); ctx.ellipse(0, 0, o.r * 1.25, o.r * .62, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-o.r * 1.25, 0, 4, 0, Math.PI * 2); ctx.arc(o.r * 1.25, 0, 4, 0, Math.PI * 2); ctx.fill();
+      if (o.laserTimer > 0) { ctx.strokeStyle = '#7be8ff'; ctx.lineWidth = 5; ctx.shadowBlur = 30; ctx.shadowColor = '#7be8ff'; ctx.beginPath(); ctx.moveTo(-W, 0); ctx.lineTo(-o.r * 1.25, 0); ctx.moveTo(o.r * 1.25, 0); ctx.lineTo(W, 0); ctx.stroke(); }
+    } else if (o.type === 'pentagon') {
+      const pulse = 150 + Math.sin(performance.now() / 165) * 28; ctx.globalAlpha = .24; ctx.strokeStyle = '#b06cff'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(0, 0, pulse, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = .11; ctx.fillStyle = '#b06cff'; ctx.beginPath(); ctx.arc(0, 0, pulse, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.lineWidth = 4; ctx.fillStyle = 'rgba(176,108,255,.18)'; ctx.strokeStyle = '#b06cff'; ctx.shadowBlur = 18; ctx.shadowColor = '#b06cff'; drawPolygon(5, o.r); ctx.fill(); ctx.stroke();
+    } else if (o.type === 'hexagon') {
+      ctx.fillStyle = 'rgba(125,255,145,.18)'; ctx.strokeStyle = '#7dff91'; ctx.shadowBlur = 22; ctx.shadowColor = '#7dff91'; ctx.lineWidth = 4; drawPolygon(6, o.r); ctx.fill(); ctx.stroke();
+    } else if (o.type === 'star') {
+      ctx.fillStyle = '#fff27a'; ctx.shadowBlur = 20; ctx.shadowColor = '#fff27a'; ctx.beginPath(); for (let i = 0; i < 10; i++) { const rr = i % 2 === 0 ? o.r : o.r * .45; const a = (Math.PI / 5) * i - Math.PI / 2; const x = Math.cos(a) * rr; const y = Math.sin(a) * rr; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.fill();
+    } else if (o.type === 'crescent') {
+      ctx.fillStyle = '#c4f2ff'; ctx.strokeStyle = '#ffffff'; ctx.shadowBlur = 20; ctx.shadowColor = '#c4f2ff'; drawCrescentPath(o.r); ctx.fill(); ctx.stroke();
+    } else if (o.type === 'skull') {
+      const pulse = 115 + Math.sin(performance.now() / 160) * 20; ctx.globalAlpha = .18; ctx.strokeStyle = '#000000'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(0, 0, pulse, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.shadowBlur = 20; ctx.shadowColor = '#000000'; ctx.fillStyle = '#eeeeee'; ctx.beginPath(); ctx.arc(0, -5, o.r, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(-o.r * .55, o.r * .25, o.r * 1.1, o.r * .75); ctx.fillStyle = '#000000'; ctx.beginPath(); ctx.arc(-o.r * .34, -8, o.r * .22, 0, Math.PI * 2); ctx.arc(o.r * .34, -8, o.r * .22, 0, Math.PI * 2); ctx.fill();
+
+    }
+
+    if (ENEMY_TYPES.has(o.type) && o.hp > 1 && o.hp < o.maxHp) {
+      ctx.rotate(-o.angle);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(o.hp + '/' + o.maxHp, 0, -o.r - 12);
+    }
+    ctx.restore();
+  }
+
+  function drawBullets() {
+    ctx.save(); ctx.fillStyle = '#ffe680'; ctx.shadowBlur = 18; ctx.shadowColor = '#ffe680';
+    for (const b of bullets) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+
+  function applyHoming(o, dt) {
+    if (!o.homing || !o.entered) return;
+    o.homingTimer -= dt;
+    if (o.homingTimer <= 0) o.homingExit = true;
+    if (o.homingExit) {
+      o.vx *= .99;
+      o.vy += 170 * dt;
+      return;
+    }
+    const dx = player.x - o.x, dy = player.y - o.y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    o.vx += (dx / d) * 260 * dt;
+    o.vy += (dy / d) * 260 * dt;
+  }
+
+  function update(dt) {
+    let heartHealingThisFrame = false;
+    if (discoActive) {
+      discoTimer -= dt;
+      discoCharge = clamp((discoTimer / 12) * DISCO_MAX, 0, DISCO_MAX);
+      updateDiscoBar();
+      if (discoTimer <= 0) {
+        discoActive = false;
+        discoCharge = 0;
+        discoExtraLifeUsed = false;
+        scoreMultiplier = normalScoreMultiplier || 1;
+        invincibleTimer = 1.2;
+        updateDiscoBar();
+        updateHearts();
+        showEvent('DISCO ENDED');
+      }
+    }
+
+    const difficulty = getDifficulty();
+    const minute = getMinuteLevel();
+    const timeScale = discoActive ? .25 : (slowTimer > 0 ? .45 : 1);
+    slowTimer = Math.max(0, slowTimer - dt);
+    invincibleTimer = Math.max(0, invincibleTimer - dt);
+    const sdt = dt * timeScale;
+    runTime += dt;
+
+    const difficultyFactor = getDifficultyFactor();
+    worldSpeed = 55 + difficulty * 2.2;
+    // No passive survival score. Score only comes from kills, multipliers, and chain reactions.
+    spawnTimer -= dt;
+    bulletTimer -= dt;
+    chainTimer -= dt;
+    killStreakTimer = Math.max(0, killStreakTimer - dt);
+    if (killStreakTimer <= 0 && !discoActive) { killStreak = 0; scoreMultiplier = 1; normalScoreMultiplier = 1; }
+    shake = Math.max(0, shake - dt * 35);
+    if (chainTimer <= 0) combo = 1;
+
+    let controlRateX = discoActive ? 28 : 10, controlRateY = discoActive ? 24 : 8, insidePentagonTrap = false;
+    for (const o of objects) {
+      if (!o || o.hit || o.type !== 'pentagon' || !o.entered) continue;
+      const pulseRadius = 150 + Math.sin(performance.now() / 165) * 28;
+
+      const dxp = o.x - player.x, dyp = o.y - player.y;
+      const pd = Math.max(1, Math.hypot(dxp, dyp));
+      if (pd < pulseRadius) {
+        insidePentagonTrap = true;
+        const slowAmount = clamp(pd / pulseRadius, .08, .28);
+        controlRateX *= slowAmount; controlRateY *= slowAmount;
+        player.vx += (dxp / pd) * 780 * dt; player.vy += (dyp / pd) * 780 * dt;
+      }
+
+      for (const other of objects) {
+        if (!other || other.hit || other === o) continue;
+        const dx = o.x - other.x, dy = o.y - other.y;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        if (d < pulseRadius) {
+          other.vx += (dx / d) * 320 * dt;
+          other.vy += (dy / d) * 320 * dt;
+        }
+      }
+
+      for (const b of bullets) {
+        if (!b || b.dead) continue;
+        const dx = o.x - b.x, dy = o.y - b.y;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        if (d < pulseRadius) {
+          b.vx += (dx / d) * 260 * dt;
+          b.vy += (dy / d) * 260 * dt;
+        }
+      }
+    }
+
+    player.x += (targetX - player.x) * Math.min(1, dt * controlRateX);
+    player.y += (targetY - player.y) * Math.min(1, dt * controlRateY);
+    player.x += player.vx * dt; player.y += player.vy * dt;
+    player.vx *= insidePentagonTrap ? .91 : .84; player.vy *= insidePentagonTrap ? .91 : .84;
+    player.x = clamp(player.x, player.r + 8, W - player.r - 8); player.y = clamp(player.y, player.r + 60, H - player.r - 8);
+
+    if (bulletTimer <= 0) { firePlayerBullet(); bulletTimer = discoActive ? .1 : .18; }
+    for (const b of bullets) { b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt; }
+
+    if (spawnTimer <= 0 || objects.length === 0) {
+      const spawnCount = minute >= 5 ? 3 : minute >= 3 ? 2 : 1;
+      for (let i = 0; i < spawnCount; i++) spawnObject();
+      if (minute >= 3 && Math.random() < .08 + difficulty * .012) spawnObject();
+      spawnTimer = Math.max(.32, rand(1.05, 1.55) / difficultyFactor);
+    }
+    if (!Number.isFinite(spawnTimer) || spawnTimer > 3) spawnTimer = .5;
+
+    for (const revive of revives) {
+      revive.timer -= dt;
+      if (revive.timer <= 0 && objects.length < MAX_OBJECTS) {
+        const revived = makeObject(revive.type, revive.x, revive.y, revive.r);
+        revived.cursed = true; revived.homing = !!revive.homing; revived.entered = true;
+        objects.push(revived); revive.done = true; explode(revive.x, revive.y, '#111111', 16);
+      }
+    }
+    revives = revives.filter(r => !r.done);
+
+
+    for (const o of objects.slice()) {
+      if (!o || o.hit) continue;
+      if (isOnScreen(o, 0)) o.entered = true;
+      o.laserTimer = Math.max(0, (o.laserTimer || 0) - dt);
+      o.angle += sdt * (o.type === 'triangle' ? 2.4 : 1.1);
+      if (o.entered) applyHoming(o, dt);
+      const enemySpeedBoost = ENEMY_TYPES.has(o.type) ? difficultyFactor * (discoActive ? .32 : 1) : (discoActive ? .32 : 1);
+
+      if (o.type === 'triangle') {
+        if (o.entered) {
+          const dx = player.x - o.x;
+          o.x += Math.sign(dx) * (65 + Math.min(100, score / 380)) * sdt * enemySpeedBoost;
+        }
+        o.y += worldSpeed * sdt * enemySpeedBoost; o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost; o.vx *= .96; o.vy *= .96;
+      } else if (o.type === 'cube' || o.type === 'heart' || o.type === 'crescent') {
+        o.x += o.vx * sdt; o.y += o.vy * sdt; o.vx *= .998; o.vy *= .998;
+        // Zero-gravity helpers drift freely and can leave the arena instead of bouncing forever.
+      } else if (o.type === 'hexagon') {
+        o.x += o.vx * sdt * enemySpeedBoost; o.y += (o.vy + worldSpeed * .7) * sdt * enemySpeedBoost; o.vx *= .995; o.vy *= .995;
+        if (o.x < o.r) { o.x = o.r; o.vx = Math.abs(o.vx); } if (o.x > W - o.r) { o.x = W - o.r; o.vx = -Math.abs(o.vx); }
+      } else if (o.type === 'pentagon') {
+        o.y += worldSpeed * sdt * enemySpeedBoost; o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost; o.vx *= .96; o.vy *= .96;
+      } else if (o.type === 'diamond') {
+        if (o.entered) o.timer -= sdt;
+        o.y += worldSpeed * sdt * enemySpeedBoost; o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost; o.vx *= .96; o.vy *= .96;
+        if (o.entered && o.timer <= 0) { playSfx('laserCharge'); o.timer = rand(1.4, 2.8); fireLaser(o); }
+      } else if (o.type === 'star') {
+        if (o.entered) o.timer -= sdt;
+        if (o.exitAfterDashes) {
+          o.x += o.vx * sdt * enemySpeedBoost;
+          o.y += (Math.abs(o.vy) + 210) * sdt * enemySpeedBoost;
+        } else if (o.phase === 'dash') {
+          o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost; o.vx *= .985; o.vy *= .985;
+          if (o.timer <= 0) { o.phase = 'float'; o.timer = rand(1.0, 1.9); o.vx = rand(-80, 80); o.vy = rand(85, 145); }
+        } else {
+          o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost;
+          if (o.entered && o.timer <= 0) {
+            o.dashCount += 1;
+            if (o.dashCount > 6) {
+              o.exitAfterDashes = true;
+              o.vx = rand(-90, 90);
+              o.vy = rand(220, 320);
+            } else {
+              o.phase = 'dash';
+              o.timer = .35;
+              const angle = rand(-Math.PI * .15, Math.PI * 1.15);
+              const dashSpeed = rand(260, 360);
+              o.vx = Math.cos(angle) * dashSpeed;
+              o.vy = Math.abs(Math.sin(angle) * dashSpeed) + 80;
+              playSfx('starDash');
+              showEvent('STAR DASH ' + o.dashCount + '/6!');
+            }
+          }
+        }
+      } else if (o.type === 'skull') {
+        o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost; if (o.x < o.r) { o.x = o.r; o.vx = Math.abs(o.vx); } if (o.x > W - o.r) { o.x = W - o.r; o.vx = -Math.abs(o.vx); }
+      } else {
+        o.y += worldSpeed * sdt;
+      }
+    }
+
+    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .97; p.vy *= .97; p.life -= dt; }
+    for (const ft of floatingTexts) { ft.y += ft.vy * dt; ft.life -= dt; }
+
+    // Bullets interact with environment: cubes/hearts/moons block them; enemies are damaged.
+    for (const b of bullets) {
+      if (b.dead) continue;
+      for (const o of objects) {
+      if (!o || o.hit || !o.entered) continue;
+        if (Math.hypot(b.x - o.x, b.y - o.y) < b.r + o.r) {
+          if (HELPER_TYPES.has(o.type)) {
+            b.dead = true;
+            playHelperHit();
+            explode(b.x, b.y, '#ffffff', 4);
+            if (o.type === 'cube' || o.type === 'heart' || o.type === 'crescent') {
+              o.vy -= 80;
+              o.vx += rand(-45, 45);
+            }
+          } else if (ENEMY_TYPES.has(o.type)) {
+            b.dead = true;
+            damageEnemy(o, b.damage || 1, discoActive ? '#ff00ff' : '#ffe680');
+          }
+          break;
+        }
+      }
+    }
+
+    for (const o of objects) {
+      if (!o || o.hit || !o.entered) continue;
+      if (o.type === 'diamond' && o.laserTimer > 0) {
+        const laserHalfHeight = 14;
+        const leftBeamEnd = o.x - o.r * 1.25;
+        const rightBeamStart = o.x + o.r * 1.25;
+        const touchingLaserY = Math.abs(player.y - o.y) <= player.r + laserHalfHeight;
+        const touchingLeftLaser = player.x - player.r <= leftBeamEnd;
+        const touchingRightLaser = player.x + player.r >= rightBeamStart;
+        if (touchingLaserY && (touchingLeftLaser || touchingRightLaser)) {
+          damagePlayer('Destroyed by ellipse laser.');
+        }
+      }
+      if (o.type === 'skull') {
+        const radius = 115 + Math.sin(performance.now() / 160) * 20;
+        for (const other of objects) {
+          if (!other || other.hit || other === o || other.type === 'skull' || !other.entered) continue;
+          if (Math.hypot(other.x - o.x, other.y - o.y) < radius) { playSfx('skullAura'); skullCorrupt(other, o); }
+        }
+      }
+      if (o.type === 'heart') {
+        const pulseRadius = 88 + Math.sin(performance.now() / 180) * 14;
+        const d = Math.hypot(player.x - o.x, player.y - o.y);
+        if (d < pulseRadius && player.hearts < MAX_HEARTS) {
+          heartHealingThisFrame = true;
+          o.healPulseTimer -= dt;
+          if (o.healPulseTimer <= 0) {
+            o.healPulseTimer = 1;
+            player.healProgress += 1;
+            explode(o.x, o.y, '#ff6fb1', 12);
+            const now = performance.now();
+            if (now - lastHealTickTime > 180) { playSfx('heartPulse'); lastHealTickTime = now; }
+            showEvent('HEAL PULSE');
+            if (player.healProgress >= 4) {
+              player.hearts += 1;
+              player.healProgress = 0;
+              playSfx('heartGain');
+              showEvent('+1 HEART');
+              explode(player.x, player.y, '#ff6fb1', 30);
+            }
+            updateHearts();
+          }
+        }
+      }
+    }
+
+    if (!heartHealingThisFrame && player.healProgress > 0) {
+      playSfx('healCancel');
+      player.healProgress = 0;
+      updateHearts();
+    }
+
+    for (const o of objects.slice()) {
+      if (!o || o.hit) continue;
+      const d = Math.hypot(o.x - player.x, o.y - player.y);
+      if (d < o.r + player.r) {
+        if (SAFE_TOUCH_TYPES.has(o.type)) {
+          if (o.type === 'cube' || o.type === 'heart') {
+            const dx = o.x - player.x, dy = o.y - player.y;
+            const len = Math.max(1, Math.hypot(dx, dy));
+            o.vx += (dx / len) * 430;
+            o.vy += (dy / len) * 430;
+            player.vx -= (dx / len) * 40;
+            player.vy -= (dy / len) * 40;
+            playSfx('cubeBump');
+            explode(o.x, o.y, o.type === 'heart' ? '#ff6fb1' : '#00d7ff', 6);
+          } else if (o.type === 'crescent') activateCrescent(o);
+        } else if (o.entered && DEADLY_TOUCH_TYPES.has(o.type)) {
+          const reasons = { triangle: 'Destroyed by triangle enemy.', circle: 'Destroyed by bomb circle.', pentagon: 'Crushed by pentagon gravity trap.', hexagon: 'Destroyed by hexagon enemy.', star: 'Destroyed by dashing star.', skull: 'Destroyed by skull curse.' };
+          damagePlayer(reasons[o.type] || 'Destroyed by enemy.');
+          if (o.type === 'circle') triggerExplosion(o);
+          else if (o.type !== 'pentagon' && o.type !== 'skull' && o.type !== 'star') killEnemy(o, '#ff477e');
+        }
+      }
+    }
+
+    const maxPairs = Math.min(objects.length, 80);
+    for (let i = 0; i < maxPairs; i++) {
+      const a = objects[i];
+      if (!a || a.hit) continue;
+      for (let j = i + 1; j < maxPairs; j++) {
+        const b = objects[j];
+        if (!b || b.hit) continue;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.max(.1, Math.hypot(dx, dy));
+        const minD = a.r + b.r;
+        if (d < minD) {
+          // No off-screen activation.
+          if (a.entered && b.entered) {
+            if (a.type === 'circle') triggerExplosion(a);
+            if (b.type === 'circle') triggerExplosion(b);
+            if (a.type === 'diamond') fireLaser(a);
+            if (b.type === 'diamond') fireLaser(b);
+            // Hexagons no longer split just from touching other objects.
+            // They only split once when actually destroyed by bullets, lasers, bombs, or player/enemy damage.
+            if (a.type === 'crescent') activateCrescent(a);
+            if (b.type === 'crescent') activateCrescent(b);
+          }
+          if (a.type === 'cube' || b.type === 'cube' || a.type === 'star' || b.type === 'star' || a.type === 'heart' || b.type === 'heart' || a.type === 'crescent' || b.type === 'crescent') {
+            const nx = dx / d, ny = dy / d, push = (minD - d) * .5;
+            a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+            const avx = a.vx || 0, avy = a.vy || 0, bvx = b.vx || 0, bvy = b.vy || 0;
+            a.vx = bvx - nx * 80; a.vy = bvy - ny * 80; b.vx = avx + nx * 80; b.vy = avy + ny * 80;
+          }
+        }
+      }
+    }
+
+    objects = objects.filter(o => o && !o.hit && o.y < H + 220 && o.y > -220 && o.x > -240 && o.x < W + 240).slice(-MAX_OBJECTS);
+    if (running && objects.length === 0 && spawnTimer > .25) spawnTimer = .05;
+    bullets = bullets.filter(b => b && !b.dead && b.life > 0 && b.y > -30 && b.y < H + 30).slice(-MAX_BULLETS);
+    particles = particles.filter(p => p && p.life > 0).slice(-MAX_PARTICLES);
+    floatingTexts = floatingTexts.filter(ft => ft && ft.life > 0).slice(-50);
+    scoreEl.textContent = Math.floor(score);
+    comboEl.textContent = 'COMBO ' + Math.max(1, Math.floor(combo)) + ' / MULTI x' + scoreMultiplier;
+    dangerEl.textContent = 'MINUTE ' + minute + ' / DIFFICULTY ' + Math.floor(difficulty) + '%';
+    updateHearts();
+  }
+
+  function drawBackground(t) {
+    ctx.clearRect(0, 0, W, H);
+    const difficulty = getDifficulty();
+    const grd = ctx.createRadialGradient(W/2, H*.18, 20, W/2, H*.25, H*.8);
+    if (discoActive) {
+      const hue = (performance.now() / 22) % 360;
+      grd.addColorStop(0, `hsl(${hue},100%,24%)`);
+      grd.addColorStop(.6, `hsl(${(hue + 90) % 360},100%,12%)`);
+      grd.addColorStop(1, '#05050f');
+    } else {
+      grd.addColorStop(0, slowTimer > 0 ? '#35516b' : difficulty > 4 ? '#4a163b' : '#29296b');
+      grd.addColorStop(.6, '#0c0c24');
+      grd.addColorStop(1, '#05050f');
+    }
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = .18 + Math.min(.08, difficulty * .01);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+    const offset = (t / (18 - Math.min(9, difficulty))) % 50;
+    for (let y = -50 + offset; y < H + 50; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    for (let x = 20; x < W; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 80, H); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawDiscoBall() {
+    const t = performance.now();
+    const cx = W / 2, cy = H / 2;
+    ctx.save();
+    ctx.globalAlpha = .55;
+    for (let i = 0; i < 10; i++) {
+      const a = t / 450 + i * Math.PI * .2;
+      const hue = (t / 10 + i * 36) % 360;
+      ctx.strokeStyle = `hsl(${hue},100%,60%)`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * W, cy + Math.sin(a) * H);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = '#ffffff';
+    ctx.fillStyle = '#eeeeff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ff00ff';
+    ctx.lineWidth = 3;
+    for (let y = -24; y <= 24; y += 12) {
+      ctx.beginPath(); ctx.moveTo(cx - 28, cy + y); ctx.lineTo(cx + 28, cy + y); ctx.stroke();
+    }
+    for (let x = -24; x <= 24; x += 12) {
+      ctx.beginPath(); ctx.moveTo(cx + x, cy - 28); ctx.lineTo(cx + x, cy + 28); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function draw() {
+    const ox = shake ? rand(-shake, shake) : 0;
+    const oy = shake ? rand(-shake, shake) : 0;
+    ctx.save(); ctx.translate(ox, oy);
+    drawBackground(performance.now());
+    if (discoActive) drawDiscoBall();
+    for (const o of objects) drawObject(o);
+    drawBullets();
+    drawPlayer();
+    for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life / p.max); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+    for (const ft of floatingTexts) {
+      ctx.globalAlpha = Math.max(0, ft.life / ft.max);
+      ctx.fillStyle = ft.color;
+      ctx.font = '900 ' + ft.size + 'px Arial';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(0,0,0,.75)';
+      ctx.lineWidth = 5;
+      ctx.strokeText(ft.text, ft.x, ft.y);
+      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  function togglePause(force = null) {
+    if (!running) return;
+    paused = force !== null ? force : !paused;
+    playSfx(paused ? 'pause' : 'resume');
+    pauseScreen.style.display = paused ? 'flex' : 'none';
+    pauseBtn.textContent = paused ? '▶ RESUME' : '⏸ PAUSE';
+    if (paused) pauseBackgroundMusic();
+    if (!paused) { lastTime = performance.now(); resumeBackgroundMusic(); }
+  }
+
+  pauseBtn.addEventListener('click', () => togglePause());
+  resumeBtn.addEventListener('click', () => togglePause(false));
+  mainMenuBtn.addEventListener('click', () => {
+    playSfx('ui');
+    pauseBackgroundMusic();
+    running = false;
+    paused = false;
+    pauseScreen.style.display = 'none';
+    pauseBtn.style.display = 'none';
+    startScreen.style.display = 'flex';
+  });
+
+  function loop(now) {
+    if (!running) return;
+    try {
+      if (paused) {
+        draw();
+        requestAnimationFrame(loop);
+        return;
+      }
+      const dt = Math.min(.033, Math.max(0, (now - lastTime) / 1000));
+      lastTime = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    } catch (err) {
+      running = false;
+      debugBox.style.display = 'block';
+      debugBox.textContent = 'BUG FOUND:\n' + (err && err.message ? err.message : err) + '\n\n' + (err && err.stack ? err.stack : 'No stack available');
+    }
+  }
+
+  function setTargetFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const oldX = targetX;
+    const oldY = targetY;
+    targetX = e.clientX - rect.left;
+    targetY = e.clientY - rect.top;
+    const now = performance.now();
+    if (running && !paused && now - lastWhooshTime > 360 && Math.hypot(targetX - oldX, targetY - oldY) > 80) {
+      playSfx('whoosh');
+      lastWhooshTime = now;
+    }
+  }
+
+  canvas.addEventListener('pointerdown', e => { pointerDown = true; setTargetFromEvent(e); });
+  canvas.addEventListener('pointermove', e => { if (pointerDown || e.pointerType === 'mouse') setTargetFromEvent(e); });
+  canvas.addEventListener('pointerup', () => { pointerDown = false; });
+  canvas.addEventListener('pointercancel', () => { pointerDown = false; });
+  window.addEventListener('mousemove', e => { if (running) setTargetFromEvent(e); });
+  window.addEventListener('keydown', e => {
+    if (running && (e.key === ' ' || e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); togglePause(); return; }
+    if (!running && (e.key === ' ' || e.key === 'Enter')) startGame();
+    if (running && e.key === 'ArrowLeft') targetX = player.x - 70;
+    if (running && e.key === 'ArrowRight') targetX = player.x + 70;
+    if (running && e.key === 'ArrowUp') targetY = player.y - 70;
+    if (running && e.key === 'ArrowDown') targetY = player.y + 70;
+  });
+
+  // Syntax stability patch applied
+  drawBackground(0);
+})();
+</script>
+</body>
+</html>
