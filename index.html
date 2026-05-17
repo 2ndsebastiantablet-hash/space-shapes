@@ -90,7 +90,7 @@
   const discoFill = document.getElementById('discoFill');
 
   let W = 0, H = 0, dpr = 1;
-  let player, objects, particles, bullets, revives, floatingTexts;
+  let player, objects, particles, bullets, floatingTexts;
   let score, combo, best, running, paused, worldSpeed, spawnTimer, bulletTimer, shake, chainTimer, slowTimer, runTime, invincibleTimer;
   let discoCharge, discoActive, discoTimer, discoExtraLifeUsed;
   let killStreak, killStreakTimer, scoreMultiplier, normalScoreMultiplier;
@@ -104,6 +104,7 @@
   const SAFE_TOUCH_TYPES = new Set(['cube', 'crescent', 'heart']);
   const HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
   const OUTLINE_HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
+  const ENVIRONMENT_IMMUNE_TYPES = new Set(['crescent']);
   const ENEMY_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull', 'diamond']);
   const DEADLY_TOUCH_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull']);
 
@@ -280,7 +281,6 @@
     objects = [];
     particles = [];
     bullets = [];
-    revives = [];
     floatingTexts = [];
     score = 0;
     combo = 1;
@@ -452,7 +452,7 @@
     };
     if (type === 'cube') { obj.vx = rand(-80, 80); obj.vy = rand(25, 75); }
     if (type === 'heart') { obj.vx = rand(-70, 70); obj.vy = rand(20, 65); obj.r = Math.max(24, r); }
-    if (type === 'crescent') { obj.vx = rand(-60, 60); obj.vy = rand(18, 60); obj.r = Math.max(22, r); }
+    if (type === 'crescent') { obj.vx = rand(-22, 22); obj.vy = rand(14, 34); obj.r = Math.max(22, r); }
     if (type === 'star') { obj.vx = rand(-90, 90); obj.vy = rand(85, 145); obj.timer = rand(1.4, 2.6); }
     if (type === 'skull') { obj.vx = rand(-35, 35); obj.vy = rand(55, 95); obj.r = Math.max(24, r); }
     if (type === 'hexagon') { obj.r = Math.max(24, r); }
@@ -516,12 +516,6 @@
     bullets.push({ x: player.x, y: player.y - player.r - 8, vx: 0, vy: discoActive ? -820 : -520, r: discoActive ? 7 : 5, life: 1.8, dead: false, damage: discoActive ? 5 : 1 });
   }
 
-  function scheduleRevive(o) {
-    if (!o || !o.cursed || o.type === 'skull' || HELPER_TYPES.has(o.type)) return;
-    revives.push({ type: o.type, x: clamp(o.x + rand(-40, 40), 35, W - 35), y: clamp(o.y + rand(-40, 40), 40, H - 80), r: o.r, timer: 1.1, homing: o.homing });
-    showEvent('REVIVE CURSE!');
-  }
-
   function awardEnemyKill(o, base = 35) {
     // Multiplier now means multiple kills within 2 seconds.
     // 1 kill = no multiplier, 2+ fast kills = x2, x3, x4, etc.
@@ -545,7 +539,6 @@
   function killEnemy(o, color = '#66f7ff') {
     if (!o || o.hit || HELPER_TYPES.has(o.type)) return;
     if (o.type === 'skull') clearHomingFromSkull(o);
-    scheduleRevive(o);
     o.hit = true;
     awardEnemyKill(o, 35);
     explode(o.x, o.y, color, 14);
@@ -586,7 +579,6 @@
   function splitHexagon(o) {
     if (!o || o.hit || !o.entered || o.splitDone) return;
     o.splitDone = true;
-    scheduleRevive(o);
     o.hit = true;
     combo += 1;
     const nextGen = (o.hexGen || 0) + 1;
@@ -653,7 +645,6 @@
 
   function triggerExplosion(source) {
     if (!source || source.hit || !source.entered) return;
-    scheduleRevive(source);
     source.hit = true;
     chainTimer = 1.25;
     shake = 16;
@@ -919,7 +910,7 @@
       }
 
       for (const other of objects) {
-        if (!other || other.hit || other === o) continue;
+        if (!other || other.hit || other === o || ENVIRONMENT_IMMUNE_TYPES.has(other.type)) continue;
         const dx = o.x - other.x, dy = o.y - other.y;
         const d = Math.max(1, Math.hypot(dx, dy));
         if (d < pulseRadius) {
@@ -955,17 +946,6 @@
       spawnTimer = Math.max(.32, rand(1.05, 1.55) / difficultyFactor);
     }
     if (!Number.isFinite(spawnTimer) || spawnTimer > 3) spawnTimer = .5;
-
-    for (const revive of revives) {
-      revive.timer -= dt;
-      if (revive.timer <= 0 && objects.length < MAX_OBJECTS) {
-        const revived = makeObject(revive.type, revive.x, revive.y, revive.r);
-        revived.cursed = true; revived.homing = !!revive.homing; revived.entered = true;
-        objects.push(revived); revive.done = true; explode(revive.x, revive.y, '#111111', 16);
-      }
-    }
-    revives = revives.filter(r => !r.done);
-
 
     for (const o of objects.slice()) {
       if (!o || o.hit) continue;
@@ -1031,17 +1011,18 @@
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .97; p.vy *= .97; p.life -= dt; }
     for (const ft of floatingTexts) { ft.y += ft.vy * dt; ft.life -= dt; }
 
-    // Bullets interact with environment: cubes/hearts/moons block them; enemies are damaged.
+    // Bullets interact with cubes/hearts and enemies. Crescents ignore environmental hits.
     for (const b of bullets) {
       if (b.dead) continue;
       for (const o of objects) {
       if (!o || o.hit || !o.entered) continue;
+        if (ENVIRONMENT_IMMUNE_TYPES.has(o.type)) continue;
         if (Math.hypot(b.x - o.x, b.y - o.y) < b.r + o.r) {
           if (HELPER_TYPES.has(o.type)) {
             b.dead = true;
             playHelperHit();
             explode(b.x, b.y, '#ffffff', 4);
-            if (o.type === 'cube' || o.type === 'heart' || o.type === 'crescent') {
+            if (o.type === 'cube' || o.type === 'heart') {
               o.vy -= 80;
               o.vx += rand(-45, 45);
             }
@@ -1137,6 +1118,7 @@
       for (let j = i + 1; j < maxPairs; j++) {
         const b = objects[j];
         if (!b || b.hit) continue;
+        if (ENVIRONMENT_IMMUNE_TYPES.has(a.type) || ENVIRONMENT_IMMUNE_TYPES.has(b.type)) continue;
         const dx = b.x - a.x, dy = b.y - a.y;
         const d = Math.max(.1, Math.hypot(dx, dy));
         const minD = a.r + b.r;
@@ -1149,10 +1131,8 @@
             if (b.type === 'diamond') fireLaser(b);
             // Hexagons no longer split just from touching other objects.
             // They only split once when actually destroyed by bullets, lasers, bombs, or player/enemy damage.
-            if (a.type === 'crescent') activateCrescent(a);
-            if (b.type === 'crescent') activateCrescent(b);
           }
-          if (a.type === 'cube' || b.type === 'cube' || a.type === 'star' || b.type === 'star' || a.type === 'heart' || b.type === 'heart' || a.type === 'crescent' || b.type === 'crescent') {
+          if (a.type === 'cube' || b.type === 'cube' || a.type === 'star' || b.type === 'star' || a.type === 'heart' || b.type === 'heart') {
             const nx = dx / d, ny = dy / d, push = (minD - d) * .5;
             a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
             const avx = a.vx || 0, avy = a.vy || 0, bvx = b.vx || 0, bvy = b.vy || 0;
