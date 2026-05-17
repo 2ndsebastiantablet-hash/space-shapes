@@ -6,4 +6,4 @@ Fast arcade survival and chain-reaction game built as a single HTML Canvas proto
 
 This repo is ready for static web hosting. Serve the repository root and open `index.html`.
 
-The referenced audio files live in `assets/audio/`. If an individual sound effect cannot load, the game falls back to short Web Audio effects. Background music only uses the included real MP3 file.
+Short gameplay sound effects are generated with the Web Audio API. Background music only uses the included real MP3 file in `assets/audio/`; if that file cannot load, the game continues without backup music.

@@ -107,33 +107,16 @@
   const ENEMY_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull', 'diamond']);
   const DEADLY_TOUCH_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull']);
 
-  // Audio map based on the uploaded order:
-  // 1 blaster, 2 enemy hit, 3-5 helper hits, 6 hurt, 7 death, 8 whoosh, 9 background music, 10 disco/invincible power.
-  const AUDIO_DATA = {
-    blaster: 'freesound_community-machine-gun-burst-43670 (1).mp3',
-    enemyHit: 'homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3',
-    helper1: 'freesound_community-pan-hit7-105402.mp3',
-    helper2: 'freesound_community-topf-3-103454.mp3',
-    helper3: 'freesound_community-topf-2-83324.mp3',
-    hurt: 'driken5482-retro-hurt-2-236675.mp3',
-    death: 'vinodadora-male-death-sound-128357.mp3',
-    whoosh: 'soundreality-whoosh-bamboo-389752.mp3',
-    bgMusic: 'vibehorn-disco-funk-background-507219.mp3',
-    discoPower: 'soundgallerybydmitrytaras-retro-501327.mp3'
-  };
   const AUDIO_BASE = 'assets/audio/';
-  const AUDIO_SETTINGS = {
-    blaster: { volume: .18, cutoff: .18, pool: 6 },
-    enemyHit: { volume: .32, cutoff: .22, pool: 6 },
-    helper1: { volume: .28, cutoff: .24, pool: 3 },
-    helper2: { volume: .28, cutoff: .24, pool: 3 },
-    helper3: { volume: .28, cutoff: .24, pool: 3 },
-    hurt: { volume: .55, cutoff: .32, pool: 3 },
-    death: { volume: .62, cutoff: 1.1, pool: 2 },
-    whoosh: { volume: .16, cutoff: .35, pool: 3 },
-    discoPower: { volume: .55, cutoff: 1.0, pool: 2 }
-  };
-  const audioPools = {};
+  const BG_MUSIC_FILE = 'vibehorn-disco-funk-background-507219.mp3';
+  const SUPPORTED_SFX = new Set([
+    'blaster', 'enemyHit', 'helper1', 'helper2', 'helper3', 'hurt', 'death', 'whoosh',
+    'discoPower', 'heartAppear', 'heartPulse', 'heartGain', 'healCancel', 'scoreLoss',
+    'combo', 'multiplier', 'bombTick', 'bombExplode', 'knockback', 'cubeBump',
+    'pentagonPulse', 'hexSplit', 'hexVanish', 'starWarn', 'starDash', 'skullAura',
+    'curseApply', 'curseBreak', 'laserCharge', 'laserFire', 'crescent', 'ui',
+    'pause', 'resume', 'gameStart', 'newBest'
+  ]);
   let audioUnlocked = false;
   let bgMusic = null;
   let lastWhooshTime = 0;
@@ -152,59 +135,22 @@
     if (audioUnlocked) return;
     audioUnlocked = true;
 
-    // Try real uploaded audio files first. If they are not deployed with the page, Web Audio fallback still plays.
-    for (const name of Object.keys(AUDIO_SETTINGS)) {
-      const cfg = AUDIO_SETTINGS[name];
-      audioPools[name] = [];
-      for (let i = 0; i < cfg.pool; i++) {
-        const a = new Audio(AUDIO_BASE + AUDIO_DATA[name]);
-        a.preload = 'auto';
-        a.volume = cfg.volume;
-        a.onerror = () => { a.dataset.failed = '1'; };
-        audioPools[name].push(a);
-      }
-    }
-    bgMusic = new Audio(AUDIO_BASE + AUDIO_DATA.bgMusic);
+    // Short gameplay SFX are generated with Web Audio. Only the background music uses a real MP3.
+    bgMusic = new Audio(AUDIO_BASE + BG_MUSIC_FILE);
     bgMusic.loop = true;
     bgMusic.volume = .24;
+    bgMusic.preload = 'auto';
     bgMusic.onerror = () => { bgMusic.dataset.failed = '1'; };
   }
 
   function playSfx(name, overrides = {}) {
     if (!audioUnlocked) return;
-
-    const pool = audioPools[name];
-    const cfg = AUDIO_SETTINGS[name] || {};
-    const playFallback = () => playSynthSfx(name, overrides);
-
-    if (!pool || !pool.length) {
-      playFallback();
-      return;
-    }
-
-    const a = pool.find(x => (x.paused || x.ended) && x.dataset.failed !== '1') || pool.find(x => x.dataset.failed !== '1');
-    if (!a) {
-      playFallback();
-      return;
-    }
-
-    try {
-      a.pause();
-      a.currentTime = 0;
-      a.volume = overrides.volume ?? cfg.volume ?? .35;
-      a.playbackRate = overrides.rate ?? 1;
-      const playPromise = a.play();
-      if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(playFallback);
-      const cutoff = overrides.cutoff ?? cfg.cutoff;
-      if (cutoff) {
-        setTimeout(() => { try { a.pause(); a.currentTime = 0; } catch(e) {} }, cutoff * 1000);
-      }
-    } catch(e) {
-      playFallback();
-    }
+    if (!SUPPORTED_SFX.has(name)) return;
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    playSynthSfx(name, overrides);
   }
 
-  function playTone(freq = 440, duration = .12, type = 'square', volume = .18, slideTo = null, delay = 0) {
+  function playTone(freq = 440, duration = .12, type = 'square', volume = .18, slideTo = null, delay = 0, filterFreq = 3800) {
     if (!audioCtx) return;
     const t = audioCtx.currentTime + delay;
     const osc = audioCtx.createOscillator();
@@ -214,10 +160,10 @@
     osc.frequency.setValueAtTime(freq, t);
     if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + duration);
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(3200, t);
+    filter.frequency.setValueAtTime(filterFreq, t);
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(volume, t + .012);
-    gain.gain.exponentialRampToValueAtTime(.0001, t + duration);
+    gain.gain.exponentialRampToValueAtTime(volume, t + .01);
+    gain.gain.exponentialRampToValueAtTime(.0001, t + Math.max(.025, duration));
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(audioCtx.destination);
@@ -225,20 +171,25 @@
     osc.stop(t + duration + .04);
   }
 
-  function playNoise(duration = .15, volume = .18, filterFreq = 900, filterType = 'bandpass', delay = 0) {
+  function playNoise(duration = .15, volume = .18, filterFreq = 900, filterType = 'bandpass', delay = 0, endFilterFreq = null) {
     if (!audioCtx) return;
     const t = audioCtx.currentTime + delay;
     const bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate * duration));
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    for (let i = 0; i < bufferSize; i++) {
+      const falloff = 1 - i / bufferSize;
+      data[i] = (Math.random() * 2 - 1) * falloff * falloff;
+    }
     const src = audioCtx.createBufferSource();
     const filter = audioCtx.createBiquadFilter();
     const gain = audioCtx.createGain();
     filter.type = filterType;
     filter.frequency.setValueAtTime(filterFreq, t);
+    if (endFilterFreq) filter.frequency.exponentialRampToValueAtTime(Math.max(20, endFilterFreq), t + duration);
     filter.Q.setValueAtTime(1.2, t);
-    gain.gain.setValueAtTime(volume, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(volume, t + .008);
     gain.gain.exponentialRampToValueAtTime(.0001, t + duration);
     src.buffer = buffer;
     src.connect(filter);
@@ -255,40 +206,42 @@
   function playSynthSfx(name, overrides = {}) {
     if (!audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-    if (name === 'blaster') { playNoise(.045, .045, 2600, 'highpass'); playTone(980, .055, 'square', .08, 210); }
-    else if (name === 'enemyHit') { playNoise(.10, .12, 720); playTone(220, .07, 'sawtooth', .06, 120); }
-    else if (name === 'helper1' || name === 'helper2' || name === 'helper3') { playTone(620 + Math.random()*160, .08, 'triangle', .12, 330); playNoise(.05, .035, 1800, 'bandpass'); }
-    else if (name === 'hurt') { playNoise(.12, .13, 420); playTone(260, .18, 'sawtooth', .16, 75); }
-    else if (name === 'death') { playNoise(.26, .13, 260, 'lowpass'); playTone(190, .58, 'sawtooth', .17, 42); playTone(90, .42, 'sine', .12, 35, .08); }
-    else if (name === 'whoosh') { playNoise(.16, .055, 1400, 'bandpass'); }
-    else if (name === 'discoPower') { playChord([330, 495, 660], .18, 'triangle', .08); playTone(880, .22, 'triangle', .11, 1320, .12); playNoise(.18, .045, 2500, 'highpass', .08); }
-    else if (name === 'heartAppear') { playTone(420, .10, 'triangle', .08, 620); playTone(620, .14, 'triangle', .08, 840, .08); }
-    else if (name === 'heartPulse') { playTone(520, .08, 'sine', .075, 690); }
-    else if (name === 'heartGain') { playChord([523, 659, 784], .22, 'triangle', .09); playTone(1046, .18, 'triangle', .08, null, .12); }
-    else if (name === 'healCancel') { playTone(360, .12, 'triangle', .07, 170); }
-    else if (name === 'scoreLoss') { playTone(240, .16, 'sawtooth', .10, 90); }
-    else if (name === 'combo') { playTone(700, .07, 'triangle', .08, 920); playTone(920, .09, 'triangle', .07, 1180, .07); }
-    else if (name === 'multiplier') { playChord([440, 660, 880], .16, 'triangle', .08); playNoise(.08, .035, 2200, 'highpass'); }
-    else if (name === 'bombTick') { playTone(580, .055, 'square', .065, 460); }
-    else if (name === 'bombExplode') { playNoise(.24, .18, 180, 'lowpass'); playTone(110, .20, 'sawtooth', .13, 55); }
-    else if (name === 'knockback') { playNoise(.11, .10, 520); playTone(160, .09, 'square', .06, 260); }
-    else if (name === 'cubeBump') { playTone(300, .07, 'triangle', .09, 220); }
-    else if (name === 'pentagonPulse') { playTone(180, .16, 'sine', .075, 120); playNoise(.08, .035, 340); }
-    else if (name === 'hexSplit') { playNoise(.11, .09, 900); playTone(360, .08, 'square', .07, 610); }
-    else if (name === 'hexVanish') { playTone(420, .11, 'triangle', .07, 180); }
-    else if (name === 'starWarn') { playTone(900, .08, 'square', .07, 900); playTone(900, .08, 'square', .07, 900, .09); }
-    else if (name === 'starDash') { playNoise(.13, .10, 1900, 'bandpass'); playTone(500, .08, 'sawtooth', .07, 1000); }
-    else if (name === 'skullAura') { playNoise(.14, .055, 220, 'lowpass'); }
-    else if (name === 'curseApply') { playTone(130, .18, 'sawtooth', .09, 65); playNoise(.15, .08, 300); }
-    else if (name === 'curseBreak') { playChord([392, 523, 784], .18, 'triangle', .075); }
-    else if (name === 'laserCharge') { playTone(500, .18, 'triangle', .075, 1200); }
-    else if (name === 'laserFire') { playNoise(.12, .12, 2800, 'highpass'); playTone(1200, .09, 'square', .07, 600); }
-    else if (name === 'crescent') { playChord([349, 523, 698], .24, 'sine', .07); }
-    else if (name === 'ui') { playTone(520, .055, 'triangle', .06, 720); }
-    else if (name === 'pause') { playTone(440, .08, 'triangle', .06, 300); }
-    else if (name === 'resume') { playTone(300, .08, 'triangle', .06, 520); }
-    else if (name === 'gameStart') { playChord([392, 494, 784], .20, 'triangle', .075); }
-    else if (name === 'newBest') { playChord([523, 659, 784, 1046], .28, 'triangle', .075); }
+    if (name === 'blaster') { playNoise(.035, .05, 4200, 'highpass'); playTone(1280, .075, 'square', .075, 240, 0, 5200); playTone(2300, .028, 'triangle', .035, 900, .018, 6200); }
+    else if (name === 'enemyHit') { playNoise(.11, .13, 760, 'bandpass', 0, 210); playTone(240, .085, 'sawtooth', .065, 105, 0, 1800); }
+    else if (name === 'helper1') { playTone(560, .08, 'triangle', .10, 310, 0, 2600); playNoise(.045, .03, 1600, 'bandpass'); }
+    else if (name === 'helper2') { playTone(430, .075, 'triangle', .095, 680, 0, 2600); playTone(260, .06, 'sine', .045, 330, .025); }
+    else if (name === 'helper3') { playTone(690, .085, 'triangle', .09, 410, 0, 3000); playNoise(.055, .028, 2100, 'bandpass'); }
+    else if (name === 'hurt') { playNoise(.14, .14, 430, 'bandpass', 0, 120); playTone(300, .20, 'sawtooth', .15, 70, 0, 1500); }
+    else if (name === 'death') { playNoise(.34, .16, 240, 'lowpass'); playTone(210, .62, 'sawtooth', .16, 38, 0, 1100); playTone(92, .42, 'sine', .11, 32, .11, 600); }
+    else if (name === 'whoosh') { playNoise(.18, .065, 700, 'bandpass', 0, 2600); playNoise(.11, .028, 3600, 'highpass', .045); }
+    else if (name === 'discoPower') { playChord([330, 495, 660], .16, 'triangle', .075); playTone(880, .18, 'triangle', .10, 1500, .09, 5200); playTone(1760, .10, 'sine', .055, null, .18); playNoise(.16, .045, 2800, 'highpass', .05); }
+    else if (name === 'heartAppear') { playTone(420, .09, 'sine', .07, 650); playTone(640, .13, 'triangle', .07, 900, .07); playNoise(.07, .025, 2400, 'bandpass', .02); }
+    else if (name === 'heartPulse') { playTone(520, .085, 'sine', .065, 720, 0, 2600); playTone(1040, .05, 'triangle', .025, null, .045); }
+    else if (name === 'heartGain') { playChord([523, 659, 784], .18, 'triangle', .08); playTone(1046, .20, 'triangle', .075, 1318, .11); playNoise(.08, .025, 3000, 'highpass', .04); }
+    else if (name === 'healCancel') { playTone(360, .12, 'triangle', .07, 165, 0, 1800); }
+    else if (name === 'scoreLoss') { playTone(240, .17, 'sawtooth', .10, 82, 0, 1100); playNoise(.07, .045, 280, 'lowpass'); }
+    else if (name === 'combo') { playTone(700, .065, 'triangle', .075, 960); playTone(960, .085, 'triangle', .07, 1280, .055); }
+    else if (name === 'multiplier') { playChord([440, 660, 880], .15, 'triangle', .08); playTone(1320, .13, 'square', .055, 1760, .09, 5200); playNoise(.075, .035, 2400, 'highpass'); }
+    else if (name === 'bombTick') { playTone(580, .055, 'square', .06, 430, 0, 2200); }
+    else if (name === 'bombExplode') { playNoise(.28, .19, 190, 'lowpass'); playNoise(.18, .10, 900, 'bandpass', .015, 160); playTone(120, .24, 'sawtooth', .13, 48, 0, 900); }
+    else if (name === 'knockback') { playNoise(.105, .105, 520, 'bandpass', 0, 180); playTone(170, .085, 'square', .06, 285, 0, 1600); }
+    else if (name === 'cubeBump') { playTone(300, .075, 'triangle', .09, 215); playTone(180, .05, 'sine', .035, 260, .025); }
+    else if (name === 'pentagonPulse') { playTone(180, .17, 'sine', .075, 105, 0, 900); playNoise(.09, .035, 330, 'bandpass'); }
+    else if (name === 'hexSplit') { playNoise(.105, .085, 1200, 'bandpass', 0, 2800); playTone(360, .075, 'square', .065, 660, 0, 3400); playTone(720, .05, 'triangle', .04, 420, .035); }
+    else if (name === 'hexVanish') { playTone(520, .11, 'triangle', .065, 170, 0, 2600); playNoise(.07, .025, 1400, 'bandpass', .03, 500); }
+    else if (name === 'starWarn') { playTone(900, .075, 'square', .065, 900); playTone(900, .075, 'square', .065, 900, .085); }
+    else if (name === 'starDash') { playNoise(.13, .105, 1400, 'bandpass', 0, 4200); playTone(560, .075, 'sawtooth', .065, 1180, .015, 3600); }
+    else if (name === 'skullAura') { playNoise(.14, .055, 210, 'lowpass'); playTone(95, .12, 'sine', .04, 70, 0, 520); }
+    else if (name === 'curseApply') { playTone(145, .19, 'sawtooth', .09, 55, 0, 900); playNoise(.16, .075, 280, 'bandpass', .02, 100); }
+    else if (name === 'curseBreak') { playChord([392, 523, 784], .16, 'triangle', .075); playTone(1175, .10, 'sine', .045, null, .08); }
+    else if (name === 'laserCharge') { playTone(500, .20, 'triangle', .07, 1350, 0, 5000); playNoise(.09, .025, 2500, 'highpass', .08, 5200); }
+    else if (name === 'laserFire') { playNoise(.115, .13, 3100, 'highpass', 0, 900); playTone(1400, .08, 'square', .075, 520, 0, 5800); }
+    else if (name === 'crescent') { playChord([349, 523, 698], .22, 'sine', .06); playTone(1046, .18, 'triangle', .045, 620, .08); }
+    else if (name === 'ui') { playTone(520, .055, 'triangle', .055, 720, 0, 2600); }
+    else if (name === 'pause') { playTone(440, .08, 'triangle', .055, 300, 0, 2200); }
+    else if (name === 'resume') { playTone(300, .08, 'triangle', .055, 520, 0, 2400); }
+    else if (name === 'gameStart') { playChord([392, 494, 784], .18, 'triangle', .07); playTone(1175, .16, 'triangle', .055, 1568, .1); }
+    else if (name === 'newBest') { playChord([523, 659, 784, 1046], .25, 'triangle', .07); playTone(1568, .18, 'sine', .05, null, .14); playNoise(.10, .03, 3300, 'highpass', .06); }
   }
 
   function playHelperHit() {
