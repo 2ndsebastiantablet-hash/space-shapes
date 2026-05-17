@@ -107,8 +107,6 @@
   const ENEMY_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull', 'diamond']);
   const DEADLY_TOUCH_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull']);
 
-  const AUDIO_BASE = 'assets/audio/';
-  const BG_MUSIC_FILE = 'vibehorn-disco-funk-background-507219.mp3';
   const SUPPORTED_SFX = new Set([
     'blaster', 'enemyHit', 'helper1', 'helper2', 'helper3', 'hurt', 'death', 'whoosh',
     'discoPower', 'heartAppear', 'heartPulse', 'heartGain', 'healCancel', 'scoreLoss',
@@ -118,7 +116,6 @@
     'pause', 'resume', 'gameStart', 'newBest'
   ]);
   let audioUnlocked = false;
-  let bgMusic = null;
   let lastWhooshTime = 0;
   let deathSoundPlayed = false;
   let audioCtx = null;
@@ -134,13 +131,6 @@
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     if (audioUnlocked) return;
     audioUnlocked = true;
-
-    // Short gameplay SFX are generated with Web Audio. Only the background music uses a real MP3.
-    bgMusic = new Audio(AUDIO_BASE + BG_MUSIC_FILE);
-    bgMusic.loop = true;
-    bgMusic.volume = .24;
-    bgMusic.preload = 'auto';
-    bgMusic.onerror = () => { bgMusic.dataset.failed = '1'; };
   }
 
   function playSfx(name, overrides = {}) {
@@ -249,20 +239,6 @@
     playSfx(picks[Math.floor(Math.random() * picks.length)]);
   }
 
-  function startBackgroundMusic() {
-    if (!audioUnlocked) return;
-    // Only use the real imported background music. No generated backup music.
-    if (bgMusic && bgMusic.dataset.failed !== '1') bgMusic.play().catch(() => {});
-  }
-
-  function pauseBackgroundMusic() {
-    if (bgMusic) bgMusic.pause();
-  }
-
-  function resumeBackgroundMusic() {
-    if (audioUnlocked && bgMusic && running && !paused && bgMusic.dataset.failed !== '1') bgMusic.play().catch(() => {});
-  }
-
   best = Number(localStorage.getItem('dropchain_best') || 0);
   bestEl.textContent = 'BEST: ' + best;
 
@@ -335,7 +311,6 @@
     initAudio();
     reset();
     deathSoundPlayed = false;
-    startBackgroundMusic();
     playSfx('gameStart');
     running = true;
     paused = false;
@@ -410,7 +385,6 @@
 
   function endGame(reason = 'Destroyed by the chaos.') {
     if (!deathSoundPlayed) { playSfx('death'); deathSoundPlayed = true; }
-    pauseBackgroundMusic();
     running = false;
     pauseBtn.style.display = 'none';
     showEvent('GAME OVER');
@@ -1285,15 +1259,13 @@
     playSfx(paused ? 'pause' : 'resume');
     pauseScreen.style.display = paused ? 'flex' : 'none';
     pauseBtn.textContent = paused ? '▶ RESUME' : '⏸ PAUSE';
-    if (paused) pauseBackgroundMusic();
-    if (!paused) { lastTime = performance.now(); resumeBackgroundMusic(); }
+    if (!paused) lastTime = performance.now();
   }
 
   pauseBtn.addEventListener('click', () => togglePause());
   resumeBtn.addEventListener('click', () => togglePause(false));
   mainMenuBtn.addEventListener('click', () => {
     playSfx('ui');
-    pauseBackgroundMusic();
     running = false;
     paused = false;
     pauseScreen.style.display = 'none';
