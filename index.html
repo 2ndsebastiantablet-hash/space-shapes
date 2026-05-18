@@ -101,7 +101,7 @@
   let W = 0, H = 0, dpr = 1;
   let player, objects, particles, bullets, floatingTexts;
   let score, combo, best, running, paused, worldSpeed, spawnTimer, bulletTimer, shake, chainTimer, slowTimer, runTime, invincibleTimer;
-  let discoCharge, discoActive, discoTimer, discoExtraLifeUsed;
+  let discoCharge, discoActive, discoTimer, discoCooldownTimer, discoExtraLifeUsed;
   let killStreak, killStreakTimer, scoreMultiplier, normalScoreMultiplier;
   let standProgress, standUiKey, standSpawnTimer, activeStand, standTimer, standCollectAnim, playerTrail;
   let owlLaserTimer, jackalShadowCooldown, jackalShadowTimer, crocodileBombTimer;
@@ -112,6 +112,8 @@
   const MAX_BULLETS = 90;
   const MAX_HEARTS = 3;
   const DISCO_MAX = 100;
+  const HEX_MAX_GENERATION = 4;
+  const HEX_LIVE_SPLIT_CAP = 42;
   const SAFE_TOUCH_TYPES = new Set(['cube', 'crescent', 'heart']);
   const HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
   const OUTLINE_HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
@@ -238,24 +240,24 @@
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     if (name === 'blaster') { playNoise(.035, .05, 4200, 'highpass'); playTone(1280, .075, 'square', .075, 240, 0, 5200); playTone(2300, .028, 'triangle', .035, 900, .018, 6200); }
     else if (name === 'enemyHit') { playNoise(.11, .13, 760, 'bandpass', 0, 210); playTone(240, .085, 'sawtooth', .065, 105, 0, 1800); }
-    else if (name === 'helper1') { playTone(560, .08, 'triangle', .10, 310, 0, 2600); playNoise(.045, .03, 1600, 'bandpass'); }
-    else if (name === 'helper2') { playTone(430, .075, 'triangle', .095, 680, 0, 2600); playTone(260, .06, 'sine', .045, 330, .025); }
-    else if (name === 'helper3') { playTone(690, .085, 'triangle', .09, 410, 0, 3000); playNoise(.055, .028, 2100, 'bandpass'); }
+    else if (name === 'helper1') { playTone(560, .09, 'triangle', .18, 310, 0, 2800); playNoise(.055, .07, 1700, 'bandpass'); }
+    else if (name === 'helper2') { playTone(430, .085, 'triangle', .17, 680, 0, 2800); playTone(260, .07, 'sine', .085, 330, .025); }
+    else if (name === 'helper3') { playTone(690, .095, 'triangle', .16, 410, 0, 3200); playNoise(.06, .065, 2200, 'bandpass'); }
     else if (name === 'hurt') { playNoise(.14, .14, 430, 'bandpass', 0, 120); playTone(300, .20, 'sawtooth', .15, 70, 0, 1500); }
     else if (name === 'death') { playNoise(.34, .16, 240, 'lowpass'); playTone(210, .62, 'sawtooth', .16, 38, 0, 1100); playTone(92, .42, 'sine', .11, 32, .11, 600); }
     else if (name === 'whoosh') { playNoise(.18, .065, 700, 'bandpass', 0, 2600); playNoise(.11, .028, 3600, 'highpass', .045); }
     else if (name === 'discoPower') { playChord([330, 495, 660], .16, 'triangle', .075); playTone(880, .18, 'triangle', .10, 1500, .09, 5200); playTone(1760, .10, 'sine', .055, null, .18); playNoise(.16, .045, 2800, 'highpass', .05); }
-    else if (name === 'heartAppear') { playTone(420, .09, 'sine', .07, 650); playTone(640, .13, 'triangle', .07, 900, .07); playNoise(.07, .025, 2400, 'bandpass', .02); }
-    else if (name === 'heartPulse') { playTone(520, .085, 'sine', .065, 720, 0, 2600); playTone(1040, .05, 'triangle', .025, null, .045); }
-    else if (name === 'heartGain') { playChord([523, 659, 784], .18, 'triangle', .08); playTone(1046, .20, 'triangle', .075, 1318, .11); playNoise(.08, .025, 3000, 'highpass', .04); }
-    else if (name === 'healCancel') { playTone(360, .12, 'triangle', .07, 165, 0, 1800); }
+    else if (name === 'heartAppear') { playTone(420, .1, 'sine', .12, 650); playTone(640, .15, 'triangle', .12, 900, .07); playNoise(.08, .045, 2400, 'bandpass', .02); }
+    else if (name === 'heartPulse') { playTone(520, .095, 'sine', .12, 720, 0, 2800); playTone(1040, .06, 'triangle', .055, null, .045); }
+    else if (name === 'heartGain') { playChord([523, 659, 784], .2, 'triangle', .13); playTone(1046, .22, 'triangle', .12, 1318, .11); playNoise(.09, .05, 3200, 'highpass', .04); }
+    else if (name === 'healCancel') { playTone(360, .13, 'triangle', .12, 165, 0, 2000); }
     else if (name === 'scoreLoss') { playTone(240, .17, 'sawtooth', .10, 82, 0, 1100); playNoise(.07, .045, 280, 'lowpass'); }
-    else if (name === 'combo') { playTone(700, .065, 'triangle', .075, 960); playTone(960, .085, 'triangle', .07, 1280, .055); }
-    else if (name === 'multiplier') { playChord([440, 660, 880], .15, 'triangle', .08); playTone(1320, .13, 'square', .055, 1760, .09, 5200); playNoise(.075, .035, 2400, 'highpass'); }
+    else if (name === 'combo') { playTone(700, .075, 'triangle', .12, 960); playTone(960, .095, 'triangle', .11, 1280, .055); }
+    else if (name === 'multiplier') { playChord([440, 660, 880], .16, 'triangle', .12); playTone(1320, .14, 'square', .085, 1760, .09, 5400); playNoise(.08, .055, 2600, 'highpass'); }
     else if (name === 'bombTick') { playTone(580, .055, 'square', .06, 430, 0, 2200); }
     else if (name === 'bombExplode') { playNoise(.28, .19, 190, 'lowpass'); playNoise(.18, .10, 900, 'bandpass', .015, 160); playTone(120, .24, 'sawtooth', .13, 48, 0, 900); }
     else if (name === 'knockback') { playNoise(.105, .105, 520, 'bandpass', 0, 180); playTone(170, .085, 'square', .06, 285, 0, 1600); }
-    else if (name === 'cubeBump') { playTone(300, .075, 'triangle', .09, 215); playTone(180, .05, 'sine', .035, 260, .025); }
+    else if (name === 'cubeBump') { playTone(300, .09, 'triangle', .16, 215); playTone(180, .065, 'sine', .075, 260, .025); playNoise(.035, .035, 900, 'bandpass'); }
     else if (name === 'pentagonPulse') { playTone(180, .17, 'sine', .075, 105, 0, 900); playNoise(.09, .035, 330, 'bandpass'); }
     else if (name === 'hexSplit') { playNoise(.105, .085, 1200, 'bandpass', 0, 2800); playTone(360, .075, 'square', .065, 660, 0, 3400); playTone(720, .05, 'triangle', .04, 420, .035); }
     else if (name === 'hexVanish') { playTone(520, .11, 'triangle', .065, 170, 0, 2600); playNoise(.07, .025, 1400, 'bandpass', .03, 500); }
@@ -266,7 +268,7 @@
     else if (name === 'curseBreak') { playChord([392, 523, 784], .16, 'triangle', .075); playTone(1175, .10, 'sine', .045, null, .08); }
     else if (name === 'laserCharge') { playTone(500, .20, 'triangle', .07, 1350, 0, 5000); playNoise(.09, .025, 2500, 'highpass', .08, 5200); }
     else if (name === 'laserFire') { playNoise(.115, .13, 3100, 'highpass', 0, 900); playTone(1400, .08, 'square', .075, 520, 0, 5800); }
-    else if (name === 'crescent') { playChord([349, 523, 698], .22, 'sine', .06); playTone(1046, .18, 'triangle', .045, 620, .08); }
+    else if (name === 'crescent') { playChord([349, 523, 698], .24, 'sine', .1); playTone(1046, .2, 'triangle', .08, 620, .08); }
     else if (name === 'ui') { playTone(520, .055, 'triangle', .055, 720, 0, 2600); }
     else if (name === 'pause') { playTone(440, .08, 'triangle', .055, 300, 0, 2200); }
     else if (name === 'resume') { playTone(300, .08, 'triangle', .055, 520, 0, 2400); }
@@ -464,6 +466,7 @@
     discoCharge = 0;
     discoActive = false;
     discoTimer = 0;
+    discoCooldownTimer = 0;
     discoExtraLifeUsed = false;
     paused = false;
     pauseScreen.style.display = 'none';
@@ -491,11 +494,12 @@
   };
 
   function updateDiscoBar() {
-    discoFill.style.height = clamp(discoCharge || 0, 0, DISCO_MAX) + '%';
+    discoFill.style.height = discoCooldownTimer > 0 ? '0%' : clamp(discoCharge || 0, 0, DISCO_MAX) + '%';
+    discoFill.style.opacity = discoCooldownTimer > 0 ? '.35' : '1';
   }
 
   function addDiscoCharge(amount) {
-    if (discoActive) return;
+    if (discoActive || discoCooldownTimer > 0) return;
     discoCharge = clamp((discoCharge || 0) + amount, 0, DISCO_MAX);
     const now = performance.now();
     if (now - lastDiscoFillSoundTime > 250 && discoCharge < DISCO_MAX) { playSfx('combo'); lastDiscoFillSoundTime = now; }
@@ -504,7 +508,7 @@
   }
 
   function activateDiscoQueen() {
-    if (discoActive) return;
+    if (discoActive || discoCooldownTimer > 0) return;
     discoActive = true;
     discoTimer = 12;
     discoCharge = DISCO_MAX;
@@ -627,7 +631,7 @@
     };
     if (type === 'cube') { obj.vx = rand(-80, 80); obj.vy = rand(25, 75); }
     if (type === 'heart') { obj.vx = rand(-70, 70); obj.vy = rand(20, 65); obj.r = Math.max(24, r); }
-    if (type === 'crescent') { obj.vx = rand(-22, 22); obj.vy = rand(14, 34); obj.r = Math.max(22, r); }
+    if (type === 'crescent') { obj.vx = rand(-16, 16); obj.vy = rand(34, 56); obj.r = Math.max(22, r); }
     if (type === 'standPiece') { obj.vx = rand(-75, 75); obj.vy = rand(28, 72); obj.r = Math.max(20, r); }
     if (type === 'friendlyBomb') { obj.vx = 0; obj.vy = 0; obj.r = Math.max(18, r); obj.entered = true; }
     if (type === 'star') { obj.vx = rand(-90, 90); obj.vy = rand(85, 145); obj.timer = rand(1.4, 2.6); }
@@ -832,15 +836,25 @@
   }
 
   function splitHexagon(o) {
-    if (!o || o.hit || !o.entered || o.splitDone) return;
+    if (!o || o.hit || !o.entered) return;
+    if (o.splitDone || (o.hexGen || 0) >= HEX_MAX_GENERATION) {
+      playSfx('hexVanish');
+      killEnemy(o, '#7dff91');
+      showEvent('HEX DIED!');
+      return;
+    }
     o.splitDone = true;
     o.hit = true;
     combo += 1;
     const nextGen = (o.hexGen || 0) + 1;
     playSfx('hexSplit');
-    if (nextGen < 5 && objects.length < MAX_OBJECTS - 2) {
+    const liveHexagons = objects.reduce((count, other) => count + (other && !other.hit && other.type === 'hexagon' ? 1 : 0), 0);
+    const canSplit = nextGen <= HEX_MAX_GENERATION && liveHexagons < HEX_LIVE_SPLIT_CAP && objects.length < MAX_OBJECTS - 2;
+    if (canSplit) {
       for (let i = 0; i < 2; i++) {
-        const child = makeObject('hexagon', o.x + rand(-30, 30), o.y + rand(-30, 30), Math.max(7, o.r * .58));
+        const childRadius = Math.max(9, o.r * .62);
+        const child = makeObject('hexagon', o.x + rand(-30, 30), o.y + rand(-30, 30), childRadius);
+        child.r = childRadius;
         child.vx = rand(-120, 120);
         child.vy = rand(-90, 90);
         child.cursed = o.cursed;
@@ -855,6 +869,7 @@
       }
       showEvent('HEX SPLIT ' + nextGen + '!');
     } else {
+      awardEnemyKill(o, 35);
       playSfx('hexVanish');
       showEvent('HEX DIED!');
     }
@@ -1385,6 +1400,7 @@
       if (discoTimer <= 0) {
         discoActive = false;
         discoCharge = 0;
+        discoCooldownTimer = 10;
         discoExtraLifeUsed = false;
         scoreMultiplier = normalScoreMultiplier || 1;
         invincibleTimer = 1.2;
@@ -1392,6 +1408,11 @@
         updateHearts();
         showEvent('DISCO ENDED');
       }
+    }
+    if (!discoActive && discoCooldownTimer > 0) {
+      discoCooldownTimer = Math.max(0, discoCooldownTimer - dt);
+      updateDiscoBar();
+      if (discoCooldownTimer <= 0) showEvent('DISCO READY');
     }
 
     const difficulty = getDifficulty();
@@ -1492,7 +1513,10 @@
           o.x += Math.sign(dx) * (65 + Math.min(100, score / 380)) * sdt * enemySpeedBoost;
         }
         o.y += worldSpeed * sdt * enemySpeedBoost; o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost; o.vx *= .96; o.vy *= .96;
-      } else if (o.type === 'cube' || o.type === 'heart' || o.type === 'crescent' || o.type === 'standPiece') {
+      } else if (o.type === 'crescent') {
+        o.x += o.vx * sdt; o.y += o.vy * sdt;
+        // Crescents are one-way obstacles: they drift off-screen without being redirected.
+      } else if (o.type === 'cube' || o.type === 'heart' || o.type === 'standPiece') {
         o.x += o.vx * sdt; o.y += o.vy * sdt; o.vx *= .998; o.vy *= .998;
         // Zero-gravity helpers drift freely and can leave the arena instead of bouncing forever.
       } else if (o.type === 'friendlyBomb') {
@@ -1558,12 +1582,11 @@
     for (const tr of playerTrail) tr.life -= dt;
     playerTrail = playerTrail.filter(tr => tr.life > 0).slice(-18);
 
-    // Bullets interact with cubes/hearts and enemies. Crescents ignore environmental hits.
+    // Bullets interact with helpers and enemies. Crescents block shots but keep drifting unchanged.
     for (const b of bullets) {
       if (b.dead) continue;
       for (const o of objects) {
       if (!o || o.hit || !o.entered) continue;
-        if (ENVIRONMENT_IMMUNE_TYPES.has(o.type)) continue;
         if (Math.hypot(b.x - o.x, b.y - o.y) < b.r + o.r) {
           if (o.type === 'friendlyBomb') {
             b.dead = true;
@@ -1685,12 +1708,20 @@
         const dx = b.x - a.x, dy = b.y - a.y;
         const d = Math.max(.1, Math.hypot(dx, dy));
         const minD = a.r + b.r;
-        if ((a.type === 'standPiece' && b.type === 'crescent') || (b.type === 'standPiece' && a.type === 'crescent')) {
+        if (a.type === 'crescent' || b.type === 'crescent') {
           if (d < minD) {
-            const piece = a.type === 'standPiece' ? a : b;
-            const dir = piece === a ? -1 : 1;
-            piece.vx += (dx / d) * 120 * dir;
-            piece.vy += (dy / d) * 120 * dir;
+            const crescent = a.type === 'crescent' ? a : b;
+            const other = crescent === a ? b : a;
+            if (other.type === 'circle') triggerExplosion(other);
+            else if (other.type === 'diamond') fireLaser(other);
+            else if (other.type === 'friendlyBomb') triggerFriendlyBomb(other);
+            const ox = other.x - crescent.x, oy = other.y - crescent.y;
+            const od = Math.max(.1, Math.hypot(ox, oy));
+            const push = Math.max(4, minD - d);
+            other.x += (ox / od) * push;
+            other.y += (oy / od) * push;
+            other.vx = (other.vx || 0) + (ox / od) * 170;
+            other.vy = (other.vy || 0) + (oy / od) * 170;
           }
           continue;
         }
