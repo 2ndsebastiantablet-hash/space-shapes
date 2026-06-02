@@ -34,7 +34,15 @@
     #standPieces { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
     .standPieceChip { border: 1px solid rgba(255,255,255,.22); border-radius: 6px; padding: 3px 6px; font-size: 11px; font-weight: 900; color: rgba(255,255,255,.55); background: rgba(0,0,0,.25); }
     .standPieceChip.done { color: #171006; border-color: rgba(255,230,128,.92); background: linear-gradient(135deg,#fff2a3,#ffb52e); box-shadow: 0 0 10px rgba(255,207,74,.52); }
-    @media (max-width: 560px) { #standPanel { top: auto; bottom: 12px; left: 10px; width: calc(100vw - 20px); padding: 8px 10px; } #standPieces { gap: 4px; } .standPieceChip { font-size: 10px; padding: 3px 5px; } }
+    #standMenu { position: fixed; inset: 7vh max(12px, calc((100vw - 720px) / 2)); z-index: 40; display: none; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid rgba(255,232,156,.42); border-radius: 10px; background: rgba(5,5,18,.92); box-shadow: 0 18px 60px rgba(0,0,0,.5), 0 0 32px rgba(255,207,74,.18); pointer-events: auto; }
+    #standMenuHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    #standMenuTitle { font-size: 22px; font-weight: 1000; color: #ffdf6b; }
+    #standMenuClose { padding: 8px 13px; font-size: 16px; min-width: 42px; }
+    #standMenuGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 9px; overflow: auto; padding: 2px; }
+    .standMenuCard { border: 1px solid rgba(255,255,255,.2); border-radius: 8px; padding: 10px; color: white; background: rgba(255,255,255,.06); box-shadow: none; text-align: left; font-size: 13px; }
+    .standMenuAnimal { display: block; font-size: 16px; font-weight: 1000; color: #fff2a3; }
+    .standMenuName { display: block; margin-top: 3px; font-size: 12px; color: rgba(255,255,255,.72); }
+    @media (max-width: 560px) { #standPanel { top: auto; bottom: 12px; left: 10px; width: calc(100vw - 20px); padding: 8px 10px; } #standPieces { gap: 4px; } .standPieceChip { font-size: 10px; padding: 3px 5px; } #standMenu { inset: 5vh 10px; padding: 12px; } #standMenuGrid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -58,6 +66,10 @@
   <div id="discoBar"><div id="discoFill"></div></div>
   <div id="discoLabel">DISCO QUEEN</div>
   <div id="standPanel"><div id="standTitle">STAND: NONE</div><div id="standPieces"></div></div>
+  <div id="standMenu">
+    <div id="standMenuHeader"><div id="standMenuTitle">STANDS</div><button id="standMenuClose">X</button></div>
+    <div id="standMenuGrid"></div>
+  </div>
 
   <div id="startScreen">
     <h1>DROP//CHAIN</h1>
@@ -97,6 +109,9 @@
   const discoFill = document.getElementById('discoFill');
   const standTitle = document.getElementById('standTitle');
   const standPiecesEl = document.getElementById('standPieces');
+  const standMenu = document.getElementById('standMenu');
+  const standMenuGrid = document.getElementById('standMenuGrid');
+  const standMenuClose = document.getElementById('standMenuClose');
 
   let W = 0, H = 0, dpr = 1;
   let player, objects, particles, bullets, floatingTexts;
@@ -104,7 +119,9 @@
   let discoCharge, discoActive, discoTimer, discoCooldownTimer, discoExtraLifeUsed;
   let killStreak, killStreakTimer, scoreMultiplier, normalScoreMultiplier;
   let standProgress, standUiKey, standSpawnTimer, activeStand, standTimer, standCollectAnim, playerTrail;
+  let standOfferKey, standPieceQueue, standPiecesAppeared, standMenuOpen;
   let owlLaserTimer, jackalShadowCooldown, jackalShadowTimer, crocodileBombTimer;
+  let scarabGears, windLanes, skyCutTimer, skyCuts, ramChargeMeter, ramChargeTimer, ramChargeDir, catClones, catCloneTimer, catDodgeCooldown, floodRings, puddles, hippoRingTimer, nextEffectId;
   let pointerDown = false, targetX = 0, targetY = 0, lastTime = 0, eventToken = 0, nextObjectId = 1;
 
   const MAX_OBJECTS = 125;
@@ -120,7 +137,7 @@
   const ENVIRONMENT_IMMUNE_TYPES = new Set(['crescent']);
   const ENEMY_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull', 'diamond']);
   const DEADLY_TOUCH_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull']);
-  const STAND_KEYS = ['lion', 'owl', 'snake', 'jackal', 'crocodile'];
+  const STAND_KEYS = ['lion', 'owl', 'snake', 'jackal', 'crocodile', 'scarab', 'falcon', 'ram', 'cat', 'hippo'];
   const STANDS = {
     lion: {
       animal: 'LION', name: 'SUN MAW', color: '#ffcf4a', accent: '#fff2a3', dark: '#4d2600',
@@ -146,6 +163,31 @@
       animal: 'CROCODILE', name: 'RIVER JAW', color: '#54d89a', accent: '#f3d16b', dark: '#092d25',
       pieces: ['Head', 'Torso', 'Front Leg', 'Back Leg', 'Tail'],
       fragmentNames: ['Crocodile Head', 'Crocodile Torso', 'Front Leg', 'Back Leg', 'Crocodile Tail']
+    },
+    scarab: {
+      animal: 'SCARAB', name: 'SUN GRAVE ENGINE', color: '#ffc83d', accent: '#fff4a8', dark: '#3f2606',
+      pieces: ['Head', 'Torso', 'Left Legs', 'Right Legs', 'Wing Shell'],
+      fragmentNames: ['Scarab Head', 'Scarab Torso', 'Left Legs', 'Right Legs', 'Wing Shell']
+    },
+    falcon: {
+      animal: 'FALCON', name: 'RAZOR SKY KING', color: '#72d7ff', accent: '#ffe07a', dark: '#08243f',
+      pieces: ['Head', 'Torso', 'Left Wing', 'Right Wing', 'Talons'],
+      fragmentNames: ['Falcon Head', 'Falcon Torso', 'Left Wing', 'Right Wing', 'Talons']
+    },
+    ram: {
+      animal: 'RAM', name: 'TEMPLE BREAKER', color: '#ff6a4a', accent: '#ffd0b8', dark: '#3c1110',
+      pieces: ['Head', 'Torso', 'Front Legs', 'Back Legs', 'Horn Crown'],
+      fragmentNames: ['Ram Head', 'Ram Torso', 'Front Legs', 'Back Legs', 'Horn Crown']
+    },
+    cat: {
+      animal: 'CAT', name: 'NINE-LIFE MIRAGE', color: '#c07bff', accent: '#ffe28c', dark: '#1a0d2b',
+      pieces: ['Head', 'Torso', 'Front Legs', 'Back Legs', 'Tail'],
+      fragmentNames: ['Cat Head', 'Cat Torso', 'Front Legs', 'Back Legs', 'Tail']
+    },
+    hippo: {
+      animal: 'HIPPO', name: 'FLOOD TITAN', color: '#6ec8ff', accent: '#c9fff7', dark: '#082a35',
+      pieces: ['Head', 'Torso', 'Front Legs', 'Back Legs', 'Tail'],
+      fragmentNames: ['Hippo Head', 'Hippo Torso', 'Front Legs', 'Back Legs', 'Tail']
     }
   };
 
@@ -155,7 +197,8 @@
     'combo', 'multiplier', 'bombTick', 'bombExplode', 'knockback', 'cubeBump',
     'pentagonPulse', 'hexSplit', 'hexVanish', 'starWarn', 'starDash', 'skullAura',
     'curseApply', 'curseBreak', 'laserCharge', 'laserFire', 'crescent', 'ui',
-    'pause', 'resume', 'gameStart', 'newBest'
+    'pause', 'resume', 'gameStart', 'newBest', 'standSpawn', 'standCollect',
+    'standComplete', 'standTransform', 'standAbility', 'standEnd'
   ]);
   let audioUnlocked = false;
   let lastWhooshTime = 0;
@@ -274,6 +317,12 @@
     else if (name === 'resume') { playTone(300, .08, 'triangle', .055, 520, 0, 2400); }
     else if (name === 'gameStart') { playChord([392, 494, 784], .18, 'triangle', .07); playTone(1175, .16, 'triangle', .055, 1568, .1); }
     else if (name === 'newBest') { playChord([523, 659, 784, 1046], .25, 'triangle', .07); playTone(1568, .18, 'sine', .05, null, .14); playNoise(.10, .03, 3300, 'highpass', .06); }
+    else if (name === 'standSpawn') { playTone(360, .12, 'triangle', .09, 720, 0, 2600); playNoise(.08, .04, 1500, 'bandpass', .03); }
+    else if (name === 'standCollect') { playChord([440, 660, 990], .16, 'triangle', .1); playTone(1320, .12, 'sine', .08, null, .08); }
+    else if (name === 'standComplete') { playChord([392, 523, 659, 1046], .24, 'triangle', .12); playNoise(.12, .05, 3200, 'highpass', .04); }
+    else if (name === 'standTransform') { playTone(180, .18, 'sawtooth', .09, 540, 0, 1800); playChord([540, 810, 1080], .26, 'triangle', .1); playNoise(.20, .08, 2200, 'bandpass', .03, 5200); }
+    else if (name === 'standAbility') { playTone(760, .11, 'square', .08, 1180, 0, 4200); playNoise(.09, .05, 2600, 'highpass'); }
+    else if (name === 'standEnd') { playTone(520, .18, 'triangle', .08, 180, 0, 2200); playNoise(.12, .035, 900, 'bandpass', .05); }
   }
 
   function playHelperHit() {
@@ -329,6 +378,59 @@
     return progress ? progress.filter(Boolean).length : 0;
   }
 
+  function shuffledPieceQueue(key) {
+    const indexes = STANDS[key].pieces.map((_, i) => i);
+    for (let i = indexes.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
+    }
+    return indexes;
+  }
+
+  function clearLiveStandPieces() {
+    for (const o of objects || []) if (o && o.type === 'standPiece') o.hit = true;
+  }
+
+  function liveStandPieces(key = standOfferKey) {
+    return (objects || []).filter(o => o && !o.hit && o.type === 'standPiece' && (!key || o.standKey === key));
+  }
+
+  function chooseNewStandOffer(excludeKey = null) {
+    const choices = STAND_KEYS.filter(key => key !== excludeKey);
+    standOfferKey = choices[Math.floor(Math.random() * choices.length)] || STAND_KEYS[0];
+    standUiKey = standOfferKey;
+    standPieceQueue = shuffledPieceQueue(standOfferKey);
+    standPiecesAppeared = 0;
+    standProgress[standOfferKey] = STANDS[standOfferKey].pieces.map(() => false);
+    clearLiveStandPieces();
+    updateStandPanel();
+  }
+
+  function ensureStandOffer() {
+    if (activeStand) return;
+    if (!standOfferKey) chooseNewStandOffer();
+    if (standOfferKey && standPieceQueue && standPieceQueue.length === 0 && liveStandPieces(standOfferKey).length === 0 && getStandCompletion(standOfferKey) < STANDS[standOfferKey].pieces.length) {
+      chooseNewStandOffer(standOfferKey);
+    }
+  }
+
+  function renderStandMenu() {
+    standMenuGrid.innerHTML = STAND_KEYS.map(key => {
+      const data = STANDS[key];
+      return '<button class="standMenuCard" data-stand="' + key + '" style="border-color:' + data.color + '66; box-shadow:0 0 16px ' + data.color + '22;">' +
+        '<span class="standMenuAnimal">' + data.animal + '</span>' +
+        '<span class="standMenuName">' + data.name + '</span>' +
+      '</button>';
+    }).join('');
+  }
+
+  function toggleStandMenu(force = null) {
+    if (!running) return;
+    standMenuOpen = force !== null ? force : !standMenuOpen;
+    standMenu.style.display = standMenuOpen ? 'flex' : 'none';
+    playSfx('ui');
+  }
+
   function updateStandPanel() {
     if (!standTitle || !standPiecesEl) return;
     if (activeStand) {
@@ -337,68 +439,89 @@
       standPiecesEl.innerHTML = '<span class="standPieceChip done">' + data.name + '</span>';
       return;
     }
-    const key = standUiKey;
-    if (!key || !standProgress || getStandCompletion(key) === 0) {
+    const key = standOfferKey || standUiKey;
+    if (!key || !standProgress) {
       standTitle.textContent = 'STAND: NONE';
       standPiecesEl.innerHTML = '';
       return;
     }
     const data = STANDS[key];
     const progress = standProgress[key];
-    standTitle.textContent = 'STAND: ' + data.animal + ' / ' + data.name;
+    standTitle.textContent = 'STAND: ' + data.animal + ' / ' + data.name + ' (' + (standPiecesAppeared || 0) + '/' + data.pieces.length + ' SEEN)';
     standPiecesEl.innerHTML = data.pieces.map((piece, i) => '<span class="standPieceChip ' + (progress[i] ? 'done' : '') + '">' + piece + (progress[i] ? ' ✓' : '') + '</span>').join('');
-  }
-
-  function chooseStandPiece() {
-    let key = STAND_KEYS[Math.floor(Math.random() * STAND_KEYS.length)];
-    if (standUiKey && !activeStand && Math.random() < .38 && getStandCompletion(standUiKey) > 0) key = standUiKey;
-    const data = STANDS[key];
-    const missing = data.pieces.map((_, i) => i).filter(i => !standProgress[key][i]);
-    const pieceIndex = missing.length && Math.random() < .72 ? missing[Math.floor(Math.random() * missing.length)] : Math.floor(Math.random() * data.pieces.length);
-    return { key, pieceIndex };
   }
 
   function spawnStandPiece() {
     if (objects.length > MAX_OBJECTS || activeStand) return;
-    const pick = chooseStandPiece();
-    const data = STANDS[pick.key];
+    ensureStandOffer();
+    if (!standOfferKey || liveStandPieces(standOfferKey).length > 0) return;
+    if (!standPieceQueue || standPieceQueue.length === 0) { ensureStandOffer(); return; }
+    const pieceIndex = standPieceQueue.pop();
+    const data = STANDS[standOfferKey];
     const o = makeObject('standPiece', rand(40, W - 40), -70, rand(18, 25));
-    o.standKey = pick.key;
-    o.pieceIndex = pick.pieceIndex;
-    o.pieceName = data.fragmentNames[pick.pieceIndex];
+    o.standKey = standOfferKey;
+    o.pieceIndex = pieceIndex;
+    o.pieceName = data.fragmentNames[pieceIndex];
     o.vx = rand(-75, 75);
     o.vy = rand(28, 72);
     objects.push(o);
-    playSfx('heartAppear');
+    standPiecesAppeared += 1;
+    playSfx('standSpawn');
+    updateStandPanel();
   }
 
-  function activateStand(key) {
-    if (activeStand) return;
-    const data = STANDS[key];
-    activeStand = { key };
-    standTimer = 60;
-    standUiKey = key;
-    standProgress[key] = data.pieces.map(() => false);
+  function resetStandAbilityState() {
+    scarabGears = [];
+    windLanes = [];
+    skyCuts = [];
+    ramChargeMeter = 0;
+    ramChargeTimer = 0;
+    ramChargeDir = { x: 0, y: -1 };
+    catClones = [];
+    catCloneTimer = 1.2;
+    catDodgeCooldown = 0;
+    floodRings = [];
+    puddles = [];
+    hippoRingTimer = 1.4;
     owlLaserTimer = 1.2;
     jackalShadowCooldown = 2.4;
     jackalShadowTimer = 0;
     crocodileBombTimer = 2.6;
+    skyCutTimer = 5;
+  }
+
+  function activateStand(key, force = false) {
+    if (activeStand && !force) return;
+    const data = STANDS[key];
+    if (!data) return;
+    clearLiveStandPieces();
+    resetStandAbilityState();
+    activeStand = { key };
+    standTimer = 60;
+    standUiKey = key;
+    standOfferKey = null;
+    standPieceQueue = [];
+    standPiecesAppeared = 0;
+    standProgress = createStandProgress();
     showEvent(data.name + '!');
     addFloatingText(data.animal + ' STAND', player.x, player.y - 52, data.color, 28);
     explode(player.x, player.y, data.color, 72);
-    playSfx('discoPower');
+    playSfx('standTransform');
     shake = 24;
     updateStandPanel();
   }
 
   function endStand() {
     if (!activeStand) return;
-    const data = STANDS[activeStand.key];
+    const oldKey = activeStand.key;
+    const data = STANDS[oldKey];
     showEvent(data.animal + ' STAND ENDED');
     explode(player.x, player.y, data.accent, 30);
+    playSfx('standEnd');
     activeStand = null;
     standTimer = 0;
-    jackalShadowTimer = 0;
+    resetStandAbilityState();
+    chooseNewStandOffer(oldKey);
     updateStandPanel();
   }
 
@@ -418,9 +541,10 @@
       progress[o.pieceIndex] = true;
       addFloatingText(o.pieceName, o.x, o.y - 14, data.color, 18);
       showEvent(data.animal + ' PIECE!');
-      playSfx('multiplier');
+      playSfx('standCollect');
       if (progress.every(Boolean)) {
         standCollectAnim.complete = true;
+        playSfx('standComplete');
         setTimeout(() => { if (running && !activeStand) activateStand(o.standKey); }, 520);
       }
     }
@@ -440,15 +564,17 @@
     floatingTexts = [];
     standProgress = createStandProgress();
     standUiKey = null;
+    standOfferKey = null;
+    standPieceQueue = [];
+    standPiecesAppeared = 0;
+    standMenuOpen = false;
     standSpawnTimer = 5.5;
     activeStand = null;
     standTimer = 0;
     standCollectAnim = null;
     playerTrail = [];
-    owlLaserTimer = 0;
-    jackalShadowCooldown = 2.4;
-    jackalShadowTimer = 0;
-    crocodileBombTimer = 3;
+    nextEffectId = 1;
+    resetStandAbilityState();
     score = 0;
     combo = 1;
     worldSpeed = 80;
@@ -470,6 +596,8 @@
     discoExtraLifeUsed = false;
     paused = false;
     pauseScreen.style.display = 'none';
+    standMenu.style.display = 'none';
+    chooseNewStandOffer();
     pauseBtn.textContent = '⏸ PAUSE';
     updateDiscoBar();
     updateHearts();
@@ -557,6 +685,8 @@
     if (!deathSoundPlayed) { playSfx('death'); deathSoundPlayed = true; }
     running = false;
     pauseBtn.style.display = 'none';
+    standMenu.style.display = 'none';
+    standMenuOpen = false;
     showEvent('GAME OVER');
     const oldBest = best;
     best = Math.max(best, Math.floor(score));
@@ -580,6 +710,7 @@
       updateHearts();
       return;
     }
+    if (tryCatFatalDodge()) return;
     playSfx('hurt');
     score = Math.max(0, Math.floor(score * 0.85) - 100);
     addFloatingText('-SCORE', player.x, player.y - 35, '#ff477e', 24);
@@ -626,6 +757,11 @@
       poisonTick: 0,
       poisoned: false,
       slowDebuff: 0,
+      confusedTimer: 0,
+      waterlogged: false,
+      waterHits: 0,
+      reversePulseTimer: 0,
+      impactBomb: false,
       allied: false,
       targetY: null
     };
@@ -719,6 +855,26 @@
       addBullet({ x: player.x, y: player.y - player.r - 8, vx: 0, vy: -620, r: 6, life: 1.55, dead: false, damage: 1, stand: 'jackal', color: '#b38cff' });
       return;
     }
+    if (stand === 'scarab') {
+      addBullet({ x: player.x, y: player.y - player.r - 8, vx: rand(-60, 60), vy: -590, r: 8, life: 1.75, dead: false, damage: 2, stand: 'scarab', bounce: 1, color: '#ffc83d' });
+      return;
+    }
+    if (stand === 'falcon') {
+      for (const vx of [-250, 0, 250]) addBullet({ x: player.x, y: player.y - player.r - 8, vx, vy: -650, r: 5, life: 1.25, dead: false, damage: 2, stand: 'falcon', color: '#72d7ff' });
+      return;
+    }
+    if (stand === 'ram') {
+      addBullet({ x: player.x, y: player.y - player.r - 8, vx: 0, vy: -540, r: 9, life: 1.45, dead: false, damage: 3, stand: 'ram', color: '#ff6a4a' });
+      return;
+    }
+    if (stand === 'cat') {
+      addBullet({ x: player.x, y: player.y - player.r - 8, vx: 0, vy: -640, r: 6, life: 1.55, dead: false, damage: 1, stand: 'cat', splitOnHit: true, color: '#c07bff' });
+      return;
+    }
+    if (stand === 'hippo') {
+      addBullet({ x: player.x, y: player.y - player.r - 8, vx: 0, vy: -480, r: 11, life: 1.9, dead: false, damage: 3, stand: 'hippo', color: '#6ec8ff' });
+      return;
+    }
     addBullet({ x: player.x, y: player.y - player.r - 8, vx: 0, vy: discoActive ? -820 : -520, r: discoActive ? 7 : 5, life: 1.8, dead: false, damage: discoActive ? 5 : 1, color: discoActive ? '#ff00ff' : '#ffe680' });
   }
 
@@ -749,6 +905,7 @@
     if (o.type === 'skull') clearHomingFromSkull(o);
     o.hit = true;
     awardEnemyKill(o, base);
+    if (isStandActive('scarab')) spawnScarabGear(o.x, o.y);
     if (o.poisoned) spreadPoison(o);
     explode(o.x, o.y, color, 14);
   }
@@ -825,6 +982,7 @@
       explode(o.x, o.y, '#fff27a', 5);
       return;
     }
+    if (o.waterlogged) amount = Math.ceil(amount * 1.5);
     o.hp -= amount;
     explode(o.x, o.y, color, 4);
     if (o.hp <= 0) {
@@ -852,11 +1010,11 @@
     const canSplit = nextGen <= HEX_MAX_GENERATION && liveHexagons < HEX_LIVE_SPLIT_CAP && objects.length < MAX_OBJECTS - 2;
     if (canSplit) {
       for (let i = 0; i < 2; i++) {
-        const childRadius = Math.max(9, o.r * .62);
+        const childRadius = o.waterlogged ? Math.max(7, o.r * .46) : Math.max(9, o.r * .62);
         const child = makeObject('hexagon', o.x + rand(-30, 30), o.y + rand(-30, 30), childRadius);
         child.r = childRadius;
-        child.vx = rand(-120, 120);
-        child.vy = rand(-90, 90);
+        child.vx = rand(-120, 120) * (o.waterlogged ? .45 : 1);
+        child.vy = rand(-90, 90) * (o.waterlogged ? .45 : 1);
         child.cursed = o.cursed;
         child.homing = o.homing;
         child.entered = true;
@@ -865,6 +1023,7 @@
         child.allied = isStandActive('crocodile') || !!o.allied;
         child.maxHp = Math.max(1, o.maxHp - nextGen);
         child.hp = child.maxHp;
+        if (o.waterlogged) { child.waterlogged = true; child.slowDebuff = 3; }
         objects.push(child);
       }
       showEvent('HEX SPLIT ' + nextGen + '!');
@@ -961,6 +1120,7 @@
       const comboScore = Math.floor(chainCount * 25 * scoreMultiplier);
       score += comboScore;
       addDiscoCharge(10 + chainCount * 2);
+      if (isStandActive('scarab')) addDiscoCharge(6 + chainCount);
       addFloatingText(chainCount + ' CHAIN COMBO!', source.x, source.y - 35, '#ffdf6b', 30);
       addFloatingText('+' + comboScore, source.x, source.y, '#ffffff', 20);
       showEvent(chainCount + ' CHAIN COMBO!');
@@ -992,6 +1152,96 @@
     }
   }
 
+  function spawnScarabGear(x, y) {
+    if (!isStandActive('scarab')) return;
+    scarabGears.push({ angle: rand(0, Math.PI * 2), radius: rand(34, 62), cooldown: rand(.1, .55), x, y });
+    playSfx('standCollect');
+    if (scarabGears.length >= 5) {
+      scarabGears = [];
+      const yPos = clamp(player.y + rand(-90, 70), 90, H - 80);
+      addBullet({ x: -40, y: yPos, vx: 670, vy: 0, r: 32, life: 2.5, dead: false, damage: 6, stand: 'scarabWheel', pierce: 99, color: '#ffc83d', hitIds: [] });
+      showEvent('SUN WHEEL!');
+      playSfx('standAbility');
+      shake = Math.max(shake, 18);
+    }
+  }
+
+  function addPuddle(x, y) {
+    puddles.push({ x, y, r: 46, life: 5, max: 5 });
+    if (puddles.length > 8) puddles.shift();
+  }
+
+  function triggerSkyCut() {
+    skyCuts = [];
+    for (let i = 0; i < 5; i++) {
+      const x = rand(-W * .2, W * 1.1);
+      skyCuts.push({ x, y: -60 + i * H / 5, angle: Math.PI * .23, life: .42, max: .42 });
+    }
+    let hits = 0;
+    for (const o of objects) {
+      if (!o || o.hit || !ENEMY_TYPES.has(o.type)) continue;
+      for (const slash of skyCuts) {
+        const dx = o.x - slash.x, dy = o.y - slash.y;
+        const dist = Math.abs(Math.sin(slash.angle) * dx - Math.cos(slash.angle) * dy);
+        if (dist < o.r + 22) { damageEnemy(o, 2, '#72d7ff'); hits++; break; }
+      }
+    }
+    if (hits > 0) addDiscoCharge(Math.min(14, 3 + hits));
+    showEvent('SKY CUT!');
+    playSfx('standAbility');
+    shake = Math.max(shake, 15);
+  }
+
+  function spawnCatClone() {
+    catClones.push({ x: player.x + rand(-70, 70), y: player.y + rand(-45, 45), r: player.r * .9, life: 5.5, max: 5.5 });
+    if (catClones.length > 3) catClones.shift();
+    playSfx('whoosh');
+  }
+
+  function confuseEnemy(o, x, y) {
+    if (!o || o.hit || !ENEMY_TYPES.has(o.type)) return;
+    o.confusedTimer = Math.max(o.confusedTimer || 0, 4);
+    explode(x, y, '#c07bff', 16);
+    addFloatingText('CONFUSED', o.x, o.y, '#c07bff', 15);
+  }
+
+  function getEnemyTarget(o) {
+    if (o && o.confusedTimer > 0) {
+      const enemy = nearestEnemy(o.x, o.y, o);
+      if (enemy) return enemy;
+    }
+    if (isStandActive('cat') && catClones && catClones.length) {
+      let best = catClones[0], bestD = Infinity;
+      for (const clone of catClones) {
+        const d = Math.hypot(clone.x - o.x, clone.y - o.y);
+        if (d < bestD) { best = clone; bestD = d; }
+      }
+      return best;
+    }
+    return player;
+  }
+
+  function tryCatFatalDodge() {
+    if (!isStandActive('cat') || catDodgeCooldown > 0 || player.hearts > 1 || !catClones.length) return false;
+    let best = catClones[0], bestIndex = 0, bestD = Infinity;
+    for (let i = 0; i < catClones.length; i++) {
+      const clone = catClones[i];
+      const d = Math.hypot(clone.x - player.x, clone.y - player.y);
+      if (d < bestD) { best = clone; bestIndex = i; bestD = d; }
+    }
+    player.x = best.x;
+    player.y = best.y;
+    targetX = player.x;
+    targetY = player.y;
+    catClones.splice(bestIndex, 1);
+    catDodgeCooldown = 10;
+    invincibleTimer = 1.25;
+    showEvent('NINE-LIFE DODGE!');
+    playSfx('standAbility');
+    explode(player.x, player.y, '#c07bff', 34);
+    return true;
+  }
+
   function splitOwlFeather(b, target) {
     if (!b.splitOnHit) return;
     for (const side of [-1, 1]) {
@@ -1019,12 +1269,30 @@
       b.pierce = Math.max(0, (b.pierce || 1) - 1);
     } else {
       if (b.stand === 'snake') applyPoison(o);
+      if ((b.stand === 'scarab' || b.stand === 'scarabGear') && o.type === 'circle') pushBombToNearestEnemy(o);
       if (b.stand === 'crocodile') {
         o.slowDebuff = Math.max(o.slowDebuff || 0, 2.4);
         const dx = o.x - b.x, dy = o.y - b.y;
         const d = Math.max(1, Math.hypot(dx, dy));
         o.vx += (dx / d) * 260;
         o.vy += (dy / d) * 260;
+      }
+      if (b.stand === 'ram') {
+        o.vx += (o.x - b.x) * 4;
+        o.vy -= 220;
+      }
+      if (b.stand === 'cat') {
+        confuseEnemy(o, o.x, o.y);
+        if (b.splitOnHit) {
+          for (const side of [-1, 1]) addBullet({ x: o.x, y: o.y, vx: side * 230, vy: -520, r: 4, life: .8, dead: false, damage: 1, stand: 'catShard', color: '#c07bff', hitIds: [o.id] });
+          b.splitOnHit = false;
+        }
+      }
+      if (b.stand === 'hippo') {
+        o.waterHits = (o.waterHits || 0) + 1;
+        o.waterlogged = o.waterHits >= 1;
+        o.slowDebuff = Math.max(o.slowDebuff || 0, 3);
+        addPuddle(o.x, o.y);
       }
       splitOwlFeather(b, o);
       damageEnemy(o, b.damage || 1, b.color || (discoActive ? '#ff00ff' : '#ffe680'));
@@ -1100,6 +1368,16 @@
         ctx.beginPath(); ctx.moveTo(player.x + 13, player.y - player.r + bob); ctx.lineTo(player.x + 5, player.y - player.r - 24 + bob); ctx.lineTo(player.x - 1, player.y - player.r + bob); ctx.fill();
       } else if (activeStand.key === 'crocodile') {
         ctx.globalAlpha = .65; ctx.strokeStyle = '#54d89a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(player.x, player.y + bob, player.r + 9, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      } else if (activeStand.key === 'scarab') {
+        ctx.globalAlpha = .72; ctx.beginPath(); ctx.ellipse(player.x, player.y + bob, player.r + 12, player.r + 5, 0, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.arc(player.x, player.y + bob, player.r + 18, performance.now()/300, performance.now()/300 + Math.PI * 1.4); ctx.stroke(); ctx.globalAlpha = 1;
+      } else if (activeStand.key === 'falcon') {
+        ctx.globalAlpha = .42; ctx.beginPath(); ctx.moveTo(player.x - 6, player.y + bob); ctx.quadraticCurveTo(player.x - 58, player.y - 30 + bob, player.x - 70, player.y + 10 + bob); ctx.quadraticCurveTo(player.x - 35, player.y + 2 + bob, player.x - 6, player.y + bob); ctx.fill(); ctx.beginPath(); ctx.moveTo(player.x + 6, player.y + bob); ctx.quadraticCurveTo(player.x + 58, player.y - 30 + bob, player.x + 70, player.y + 10 + bob); ctx.quadraticCurveTo(player.x + 35, player.y + 2 + bob, player.x + 6, player.y + bob); ctx.fill(); ctx.globalAlpha = 1;
+      } else if (activeStand.key === 'ram') {
+        ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(player.x - 17, player.y - 16 + bob, 16, Math.PI * .15, Math.PI * 1.3); ctx.stroke(); ctx.beginPath(); ctx.arc(player.x + 17, player.y - 16 + bob, 16, Math.PI * -.3, Math.PI * .85); ctx.stroke();
+      } else if (activeStand.key === 'cat') {
+        ctx.fillStyle = '#1a0d2b'; ctx.beginPath(); ctx.moveTo(player.x - 12, player.y - player.r + bob); ctx.lineTo(player.x - 2, player.y - player.r - 18 + bob); ctx.lineTo(player.x + 2, player.y - player.r + bob); ctx.fill(); ctx.beginPath(); ctx.moveTo(player.x + 12, player.y - player.r + bob); ctx.lineTo(player.x + 2, player.y - player.r - 18 + bob); ctx.lineTo(player.x - 2, player.y - player.r + bob); ctx.fill(); ctx.beginPath(); ctx.arc(player.x + player.r + 12, player.y + bob, 13, Math.PI * .7, Math.PI * 1.6); ctx.stroke();
+      } else if (activeStand.key === 'hippo') {
+        ctx.globalAlpha = .55; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(player.x, player.y + bob, player.r + 15 + Math.sin(performance.now()/170) * 4, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
       }
     }
     ctx.restore();
@@ -1235,6 +1513,15 @@
       ctx.beginPath(); ctx.arc(0, 0, o.r + 10, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
+    if (o.confusedTimer > 0 || o.waterlogged || o.reversePulseTimer > 0) {
+      ctx.globalAlpha = .48;
+      ctx.strokeStyle = o.waterlogged ? '#6ec8ff' : o.reversePulseTimer > 0 ? '#ff6a4a' : '#c07bff';
+      ctx.lineWidth = 4;
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.beginPath(); ctx.arc(0, 0, o.r + 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     if (o.allied) {
       ctx.strokeStyle = '#54d89a';
       ctx.lineWidth = 5;
@@ -1267,6 +1554,14 @@
         ctx.beginPath(); ctx.ellipse(b.x, b.y, b.r * .75, b.r * 1.7, Math.atan2(b.vy, b.vx) + Math.PI / 2, 0, Math.PI * 2); ctx.fill();
       } else if (b.stand === 'snake') {
         ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = .28; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.8, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      } else if (b.stand === 'scarab' || b.stand === 'scarabGear' || b.stand === 'scarabWheel') {
+        ctx.lineWidth = b.stand === 'scarabWheel' ? 6 : 3; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(b.x - b.r, b.y); ctx.lineTo(b.x + b.r, b.y); ctx.moveTo(b.x, b.y - b.r); ctx.lineTo(b.x, b.y + b.r); ctx.stroke();
+      } else if (b.stand === 'falcon') {
+        ctx.beginPath(); ctx.moveTo(b.x, b.y - b.r * 2); ctx.lineTo(b.x + b.r * 1.4, b.y + b.r); ctx.lineTo(b.x, b.y + b.r * .4); ctx.lineTo(b.x - b.r * 1.4, b.y + b.r); ctx.closePath(); ctx.fill();
+      } else if (b.stand === 'cat' || b.stand === 'catShard') {
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, b.r * .7, b.r * 1.8, Math.atan2(b.vy, b.vx) + Math.PI / 2, 0, Math.PI * 2); ctx.fill();
+      } else if (b.stand === 'hippo') {
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = .25; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 2.1, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
       } else {
         ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
       }
@@ -1283,7 +1578,8 @@
       o.vy += 170 * dt;
       return;
     }
-    const dx = player.x - o.x, dy = player.y - o.y;
+    const target = getEnemyTarget(o);
+    const dx = target.x - o.x, dy = target.y - o.y;
     const d = Math.max(1, Math.hypot(dx, dy));
     o.vx += (dx / d) * 260 * dt;
     o.vy += (dy / d) * 260 * dt;
@@ -1329,6 +1625,35 @@
         spawnFriendlyBomb();
       }
     }
+    if (activeStand.key === 'falcon') {
+      skyCutTimer -= dt;
+      if (skyCutTimer <= 0) { skyCutTimer = 5; triggerSkyCut(); }
+    }
+    if (activeStand.key === 'cat') {
+      catCloneTimer -= dt;
+      catDodgeCooldown = Math.max(0, catDodgeCooldown - dt);
+      for (const clone of catClones) clone.life -= dt;
+      catClones = catClones.filter(clone => clone.life > 0);
+      if (catCloneTimer <= 0) { catCloneTimer = 3.1; spawnCatClone(); }
+    }
+    if (activeStand.key === 'hippo') {
+      hippoRingTimer -= dt;
+      if (hippoRingTimer <= 0) {
+        hippoRingTimer = 3.3;
+        floodRings.push({ id: nextEffectId++, x: player.x, y: player.y, r: 18, life: 1.35, max: 1.35, hitIds: [] });
+        showEvent('FLOOD RING');
+        playSfx('standAbility');
+      }
+    }
+    ramChargeTimer = Math.max(0, ramChargeTimer - dt);
+    for (const cut of skyCuts) cut.life -= dt;
+    skyCuts = skyCuts.filter(cut => cut.life > 0);
+    for (const lane of windLanes) lane.life -= dt;
+    windLanes = windLanes.filter(lane => lane.life > 0);
+    for (const ring of floodRings) { ring.life -= dt; ring.r += 260 * dt; }
+    floodRings = floodRings.filter(ring => ring.life > 0);
+    for (const puddle of puddles) puddle.life -= dt;
+    puddles = puddles.filter(puddle => puddle.life > 0);
     updateStandPanel();
   }
 
@@ -1336,6 +1661,8 @@
     for (const o of objects) {
       if (!o || o.hit) continue;
       if (o.slowDebuff > 0) o.slowDebuff = Math.max(0, o.slowDebuff - dt);
+      if (o.confusedTimer > 0) o.confusedTimer = Math.max(0, o.confusedTimer - dt);
+      if (o.reversePulseTimer > 0) o.reversePulseTimer = Math.max(0, o.reversePulseTimer - dt);
       if (o.poisoned) {
         o.poisonTimer -= dt;
         o.poisonTick -= dt;
@@ -1351,8 +1678,119 @@
   function updateStandAuras(dt) {
     if (!activeStand) return;
     const key = activeStand.key;
+    const lastX = player.prevStandX ?? player.x;
+    const lastY = player.prevStandY ?? player.y;
+    const moveX = player.x - lastX;
+    const moveY = player.y - lastY;
+    const moveD = Math.hypot(moveX, moveY);
+    player.prevStandX = player.x;
+    player.prevStandY = player.y;
     if (key === 'owl' && playerTrail) {
       playerTrail.push({ x: player.x, y: player.y, life: .42, max: .42, color: '#7bbdff', r: player.r });
+    }
+    if (key === 'falcon' && moveD > 8) {
+      windLanes.push({ x: player.x, y: player.y, dx: moveX / moveD, dy: moveY / moveD, life: 1.15, max: 1.15, r: 50 });
+      if (windLanes.length > 12) windLanes.shift();
+    }
+    if (key === 'ram') {
+      if (moveD > 8) {
+        ramChargeMeter = clamp(ramChargeMeter + moveD * dt * 2.1, 0, 100);
+        ramChargeDir = { x: moveX / moveD, y: moveY / moveD };
+      } else ramChargeMeter = Math.max(0, ramChargeMeter - dt * 12);
+      if (ramChargeMeter >= 100 && ramChargeTimer <= 0 && moveD > 10) {
+        ramChargeMeter = 0;
+        ramChargeTimer = .65;
+        player.vx += ramChargeDir.x * 650;
+        player.vy += ramChargeDir.y * 650;
+        invincibleTimer = Math.max(invincibleTimer, .5);
+        showEvent('RAM CHARGE!');
+        playSfx('standAbility');
+        shake = Math.max(shake, 18);
+      }
+    }
+    if (key === 'scarab') {
+      for (let i = 0; i < scarabGears.length; i++) {
+        const gear = scarabGears[i];
+        gear.angle += dt * (2.2 + i * .18);
+        gear.x = player.x + Math.cos(gear.angle) * gear.radius;
+        gear.y = player.y + Math.sin(gear.angle) * gear.radius;
+        gear.cooldown -= dt;
+        const target = nearestEnemy(gear.x, gear.y);
+        if (target && gear.cooldown <= 0 && Math.hypot(target.x - gear.x, target.y - gear.y) < 360) {
+          const dx = target.x - gear.x, dy = target.y - gear.y;
+          const d = Math.max(1, Math.hypot(dx, dy));
+          addBullet({ x: gear.x, y: gear.y, vx: dx / d * 520, vy: dy / d * 520, r: 5, life: 1.1, dead: false, damage: 1, stand: 'scarabGear', color: '#ffc83d', homing: true, hitIds: [] });
+          gear.cooldown = .62;
+        }
+        for (const o of objects) if (o && !o.hit && o.type === 'circle' && Math.hypot(o.x - gear.x, o.y - gear.y) < o.r + 16) pushBombToNearestEnemy(o);
+      }
+    }
+    if (key === 'cat') {
+      for (let i = catClones.length - 1; i >= 0; i--) {
+        const clone = catClones[i];
+        for (const o of objects) {
+          if (!o || o.hit || !ENEMY_TYPES.has(o.type)) continue;
+          if (Math.hypot(o.x - clone.x, o.y - clone.y) < o.r + clone.r) {
+            explode(clone.x, clone.y, '#c07bff', 28);
+            for (const other of objects) if (other && !other.hit && ENEMY_TYPES.has(other.type) && Math.hypot(other.x - clone.x, other.y - clone.y) < 125) confuseEnemy(other, clone.x, clone.y);
+            catClones.splice(i, 1);
+            playSfx('standAbility');
+            break;
+          }
+        }
+      }
+    }
+    if (key === 'hippo') {
+      for (const ring of floodRings) {
+        for (const o of objects) {
+          if (!o || o.hit || ring.hitIds.includes(o.id)) continue;
+          const dx = o.x - ring.x, dy = o.y - ring.y;
+          const d = Math.max(1, Math.hypot(dx, dy));
+          if (Math.abs(d - ring.r) < o.r + 18) {
+            ring.hitIds.push(o.id);
+            if (HELPER_TYPES.has(o.type) || o.type === 'standPiece') {
+              o.vx += (dx / d) * 340;
+              o.vy += (dy / d) * 340;
+            } else if (ENEMY_TYPES.has(o.type)) {
+              o.vx -= (dx / d) * 260;
+              o.vy -= (dy / d) * 260;
+              o.waterHits = (o.waterHits || 0) + 1;
+              if (o.waterHits >= 2) o.waterlogged = true;
+              o.slowDebuff = Math.max(o.slowDebuff || 0, 2.5);
+            }
+          }
+        }
+      }
+      for (const puddle of puddles) {
+        for (const o of objects) {
+          if (!o || o.hit) continue;
+          const d = Math.hypot(o.x - puddle.x, o.y - puddle.y);
+          if (d < puddle.r + o.r) {
+            if (ENEMY_TYPES.has(o.type)) { o.slowDebuff = Math.max(o.slowDebuff || 0, 1.1); if (o.waterlogged) o.vy *= .985; }
+            if (o.type === 'circle') pushBombToNearestEnemy(o);
+          }
+        }
+      }
+    }
+    if (key === 'falcon') {
+      for (const lane of windLanes) {
+        for (const o of objects) {
+          if (!o || o.hit || o.type === 'crescent') continue;
+          const d = Math.hypot(o.x - lane.x, o.y - lane.y);
+          if (d < lane.r + o.r) {
+            const force = o.type === 'circle' || o.type === 'star' ? 520 : 260;
+            o.vx += lane.dx * force * dt;
+            o.vy += lane.dy * force * dt;
+          }
+        }
+        for (const b of bullets) {
+          if (!b || b.dead) continue;
+          if (Math.hypot(b.x - lane.x, b.y - lane.y) < lane.r + b.r) {
+            b.vx += lane.dx * 420 * dt;
+            b.vy += lane.dy * 420 * dt;
+          }
+        }
+      }
     }
     for (const o of objects) {
       if (!o || o.hit || !ENEMY_TYPES.has(o.type) || o.allied) continue;
@@ -1439,18 +1877,23 @@
     let controlRateX = discoActive ? 28 : 10, controlRateY = discoActive ? 24 : 8, insidePentagonTrap = false;
     if (isStandActive('owl')) { controlRateX *= 1.55; controlRateY *= 1.55; }
     if (isStandActive('jackal')) { controlRateX *= 1.9; controlRateY *= 1.9; }
+    if (isStandActive('ram')) { controlRateX *= 1.18; controlRateY *= 1.18; }
     for (const o of objects) {
       if (!o || o.hit || o.type !== 'pentagon' || !o.entered) continue;
       const pulseRadius = 150 + Math.sin(performance.now() / 165) * 28;
+      const reversePulse = o.reversePulseTimer > 0;
 
       const dxp = o.x - player.x, dyp = o.y - player.y;
       const pd = Math.max(1, Math.hypot(dxp, dyp));
       if (pd < pulseRadius) {
-        insidePentagonTrap = true;
-        const slowAmount = clamp(pd / pulseRadius, .08, .28);
-        controlRateX *= slowAmount; controlRateY *= slowAmount;
-        const pentagonPull = isStandActive('crocodile') ? 260 : 780;
-        player.vx += (dxp / pd) * pentagonPull * dt; player.vy += (dyp / pd) * pentagonPull * dt;
+        if (!reversePulse) {
+          insidePentagonTrap = true;
+          const slowAmount = clamp(pd / pulseRadius, .08, .28);
+          controlRateX *= slowAmount; controlRateY *= slowAmount;
+        }
+        const pentagonPull = isStandActive('crocodile') ? 260 : isStandActive('ram') ? 340 : 780;
+        const dir = reversePulse ? -1 : 1;
+        player.vx += (dxp / pd) * pentagonPull * dt * dir; player.vy += (dyp / pd) * pentagonPull * dt * dir;
       }
 
       for (const other of objects) {
@@ -1458,8 +1901,9 @@
         const dx = o.x - other.x, dy = o.y - other.y;
         const d = Math.max(1, Math.hypot(dx, dy));
         if (d < pulseRadius) {
-          other.vx += (dx / d) * 320 * dt;
-          other.vy += (dy / d) * 320 * dt;
+          const dir = reversePulse ? -1 : 1;
+          other.vx += (dx / d) * 320 * dt * dir;
+          other.vy += (dy / d) * 320 * dt * dir;
         }
       }
 
@@ -1509,7 +1953,8 @@
 
       if (o.type === 'triangle') {
         if (o.entered) {
-          const dx = player.x - o.x;
+          const target = getEnemyTarget(o);
+          const dx = target.x - o.x;
           o.x += Math.sign(dx) * (65 + Math.min(100, score / 380)) * sdt * enemySpeedBoost;
         }
         o.y += worldSpeed * sdt * enemySpeedBoost; o.x += o.vx * sdt * enemySpeedBoost; o.y += o.vy * sdt * enemySpeedBoost; o.vx *= .96; o.vy *= .96;
@@ -1592,13 +2037,21 @@
             b.dead = true;
             triggerFriendlyBomb(o);
           } else if (o.type === 'standPiece') {
-            b.dead = true;
+            if (b.stand === 'scarab' && b.bounce > 0) {
+              b.bounce -= 1;
+              b.vx = rand(-260, 260);
+              b.vy = -Math.abs(b.vy || 520);
+            } else b.dead = true;
             playHelperHit();
             explode(b.x, b.y, STANDS[o.standKey].color, 5);
             o.vy -= 70;
             o.vx += rand(-55, 55);
           } else if (HELPER_TYPES.has(o.type)) {
-            b.dead = true;
+            if (b.stand === 'scarab' && b.bounce > 0) {
+              b.bounce -= 1;
+              b.vx = rand(-260, 260);
+              b.vy = -Math.abs(b.vy || 520);
+            } else b.dead = true;
             playHelperHit();
             explode(b.x, b.y, '#ffffff', 4);
             if (o.type === 'cube' || o.type === 'heart') {
@@ -1624,7 +2077,11 @@
         const touchingLeftLaser = player.x - player.r <= leftBeamEnd;
         const touchingRightLaser = player.x + player.r >= rightBeamStart;
         if (touchingLaserY && (touchingLeftLaser || touchingRightLaser)) {
-          damagePlayer('Destroyed by ellipse laser.');
+          if (isStandActive('ram') && ramChargeTimer > 0) {
+            o.laserTimer = 0;
+            damageEnemy(o, 2, '#ff6a4a');
+            showEvent('LASER SMASHED!');
+          } else damagePlayer('Destroyed by ellipse laser.');
         }
       }
       if (o.type === 'skull') {
@@ -1684,6 +2141,28 @@
             explode(o.x, o.y, o.type === 'heart' ? '#ff6fb1' : '#00d7ff', 6);
           } else if (o.type === 'crescent') activateCrescent(o);
         } else if (o.entered && DEADLY_TOUCH_TYPES.has(o.type)) {
+          if (isStandActive('ram') && ramChargeTimer > 0 && ENEMY_TYPES.has(o.type)) {
+            if (o.type === 'circle') {
+              o.impactBomb = true;
+              const dx = o.x - player.x, dy = o.y - player.y;
+              const d = Math.max(1, Math.hypot(dx, dy));
+              o.vx += (dx / d) * 620;
+              o.vy += (dy / d) * 620;
+              addFloatingText('IMPACT BOMB', o.x, o.y, '#ff6a4a', 16);
+            } else {
+              if (o.type === 'pentagon') {
+                o.reversePulseTimer = 3;
+                showEvent('GRAVITY REVERSED!');
+              }
+              killEnemy(o, '#ff6a4a', 90);
+            }
+            const dx = o.x - player.x, dy = o.y - player.y;
+            const d = Math.max(1, Math.hypot(dx, dy));
+            o.vx += (dx / d) * 520;
+            o.vy += (dy / d) * 520;
+            explode(player.x, player.y, '#ff6a4a', 18);
+            continue;
+          }
           if (isJackalShadowActive() && ENEMY_TYPES.has(o.type)) {
             if (o.type === 'circle') triggerExplosion(o);
             else killEnemy(o, '#b38cff', 90);
@@ -1729,6 +2208,8 @@
         if (d < minD) {
           if (a.type === 'friendlyBomb') triggerFriendlyBomb(a);
           if (b.type === 'friendlyBomb') triggerFriendlyBomb(b);
+          if (a.impactBomb && b.entered) triggerExplosion(a);
+          if (b.impactBomb && a.entered) triggerExplosion(b);
           if (a.allied && ENEMY_TYPES.has(b.type) && !b.allied) { damageEnemy(b, 2, '#54d89a'); a.hit = true; explode(a.x, a.y, '#54d89a', 14); }
           if (b.allied && ENEMY_TYPES.has(a.type) && !a.allied) { damageEnemy(a, 2, '#54d89a'); b.hit = true; explode(b.x, b.y, '#54d89a', 14); }
           // No off-screen activation.
@@ -1772,8 +2253,11 @@
       grd.addColorStop(1, '#05050f');
     } else if (activeStand) {
       const key = activeStand.key;
-      const top = key === 'lion' ? '#7a3f05' : key === 'owl' ? '#102b66' : key === 'snake' ? '#063b1f' : key === 'jackal' ? '#3a2209' : '#073c36';
-      const mid = key === 'lion' ? '#301607' : key === 'owl' ? '#071832' : key === 'snake' ? '#02180e' : key === 'jackal' ? '#171018' : '#031b1d';
+      const themes = {
+        lion: ['#7a3f05', '#301607'], owl: ['#102b66', '#071832'], snake: ['#063b1f', '#02180e'], jackal: ['#3a2209', '#171018'], crocodile: ['#073c36', '#031b1d'],
+        scarab: ['#7a4b08', '#251707'], falcon: ['#0b4d78', '#08243f'], ram: ['#5a1d18', '#1f1010'], cat: ['#2e1454', '#11091f'], hippo: ['#0c4a5f', '#061e2a']
+      };
+      const [top, mid] = themes[key] || ['#073c36', '#031b1d'];
       grd.addColorStop(0, top);
       grd.addColorStop(.62, mid);
       grd.addColorStop(1, '#05050f');
@@ -1804,6 +2288,16 @@
         for (let y = -70 + drift; y < H; y += 70) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
       } else if (activeStand.key === 'crocodile') {
         for (let y = drift; y < H; y += 64) { ctx.beginPath(); ctx.moveTo(0, y); for (let x = 0; x < W; x += 45) ctx.lineTo(x, y + Math.sin(x / 44 + t / 300) * 8); ctx.stroke(); }
+      } else if (activeStand.key === 'scarab') {
+        for (let i = 0; i < 9; i++) { const x = (i * 110 + drift * 1.7) % W; ctx.beginPath(); ctx.arc(x, H * .32 + Math.sin(i + t / 500) * 70, 26, 0, Math.PI * 2); ctx.stroke(); }
+      } else if (activeStand.key === 'falcon') {
+        for (let x = -80 + drift; x < W + 80; x += 85) { ctx.beginPath(); ctx.moveTo(x, H); ctx.lineTo(x + 130, 0); ctx.stroke(); }
+      } else if (activeStand.key === 'ram') {
+        for (let y = -70 + drift; y < H; y += 92) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y + Math.sin(t / 180 + y) * 22); ctx.stroke(); }
+      } else if (activeStand.key === 'cat') {
+        for (let i = 0; i < 18; i++) { const x = (i * 67 + Math.sin(t / 340 + i) * 22) % W; const y = (i * 93 + drift) % H; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke(); }
+      } else if (activeStand.key === 'hippo') {
+        for (let y = drift; y < H; y += 58) { ctx.beginPath(); ctx.moveTo(0, y); for (let x = 0; x < W; x += 35) ctx.lineTo(x, y + Math.sin(x / 28 + t / 210) * 10); ctx.stroke(); }
       }
       ctx.globalAlpha = 1;
     }
@@ -1897,6 +2391,64 @@
     ctx.restore();
   }
 
+  function drawStandEffects() {
+    ctx.save();
+    for (const puddle of puddles || []) {
+      ctx.globalAlpha = Math.max(0, puddle.life / puddle.max) * .32;
+      ctx.fillStyle = '#6ec8ff';
+      ctx.strokeStyle = '#c9fff7';
+      ctx.beginPath(); ctx.ellipse(puddle.x, puddle.y, puddle.r * 1.25, puddle.r * .58, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    for (const ring of floodRings || []) {
+      ctx.globalAlpha = Math.max(0, ring.life / ring.max) * .62;
+      ctx.strokeStyle = '#6ec8ff';
+      ctx.lineWidth = 6;
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = '#6ec8ff';
+      ctx.beginPath(); ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2); ctx.stroke();
+    }
+    for (const lane of windLanes || []) {
+      ctx.globalAlpha = Math.max(0, lane.life / lane.max) * .32;
+      ctx.strokeStyle = '#72d7ff';
+      ctx.lineWidth = 10;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#72d7ff';
+      ctx.beginPath(); ctx.moveTo(lane.x - lane.dx * 70, lane.y - lane.dy * 70); ctx.lineTo(lane.x + lane.dx * 70, lane.y + lane.dy * 70); ctx.stroke();
+    }
+    for (const cut of skyCuts || []) {
+      ctx.globalAlpha = Math.max(0, cut.life / cut.max) * .85;
+      ctx.strokeStyle = '#e7f7ff';
+      ctx.lineWidth = 7;
+      ctx.shadowBlur = 28;
+      ctx.shadowColor = '#72d7ff';
+      ctx.beginPath(); ctx.moveTo(cut.x - 180, cut.y - 80); ctx.lineTo(cut.x + W + 180, cut.y + H * .45); ctx.stroke();
+    }
+    for (const clone of catClones || []) {
+      ctx.globalAlpha = Math.max(0, clone.life / clone.max) * .5;
+      ctx.fillStyle = '#c07bff';
+      ctx.shadowBlur = 22;
+      ctx.shadowColor = '#c07bff';
+      ctx.beginPath(); ctx.arc(clone.x, clone.y, clone.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#120820'; ctx.beginPath(); ctx.arc(clone.x - 5, clone.y - 4, 2.8, 0, Math.PI * 2); ctx.arc(clone.x + 5, clone.y - 4, 2.8, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const gear of scarabGears || []) {
+      ctx.globalAlpha = .9;
+      ctx.strokeStyle = '#ffc83d';
+      ctx.lineWidth = 4;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#ffc83d';
+      ctx.beginPath(); ctx.arc(gear.x, gear.y, 12, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(gear.x - 15, gear.y); ctx.lineTo(gear.x + 15, gear.y); ctx.moveTo(gear.x, gear.y - 15); ctx.lineTo(gear.x, gear.y + 15); ctx.stroke();
+    }
+    if (isStandActive('ram')) {
+      ctx.globalAlpha = .8;
+      ctx.strokeStyle = ramChargeTimer > 0 ? '#ffffff' : '#ff6a4a';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(player.x, player.y, player.r + 23 + ramChargeMeter * .18, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function draw() {
     const ox = shake ? rand(-shake, shake) : 0;
     const oy = shake ? rand(-shake, shake) : 0;
@@ -1904,6 +2456,7 @@
     drawBackground(performance.now());
     if (discoActive) drawDiscoBall();
     for (const o of objects) drawObject(o);
+    drawStandEffects();
     drawBullets();
     drawPlayerTrail();
     drawPlayer();
@@ -1934,11 +2487,21 @@
 
   pauseBtn.addEventListener('click', () => togglePause());
   resumeBtn.addEventListener('click', () => togglePause(false));
+  standMenuClose.addEventListener('click', () => toggleStandMenu(false));
+  standMenuGrid.addEventListener('click', e => {
+    const card = e.target.closest('[data-stand]');
+    if (!card || !running) return;
+    initAudio();
+    activateStand(card.dataset.stand, true);
+    toggleStandMenu(false);
+  });
   mainMenuBtn.addEventListener('click', () => {
     playSfx('ui');
     running = false;
     paused = false;
     pauseScreen.style.display = 'none';
+    standMenu.style.display = 'none';
+    standMenuOpen = false;
     pauseBtn.style.display = 'none';
     startScreen.style.display = 'flex';
   });
@@ -1982,6 +2545,7 @@
   canvas.addEventListener('pointercancel', () => { pointerDown = false; });
   window.addEventListener('mousemove', e => { if (running) setTargetFromEvent(e); });
   window.addEventListener('keydown', e => {
+    if (running && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleStandMenu(); return; }
     if (running && (e.key === ' ' || e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); togglePause(); return; }
     if (!running && (e.key === ' ' || e.key === 'Enter')) startGame();
     if (running && e.key === 'ArrowLeft') targetX = player.x - 70;
@@ -1991,6 +2555,7 @@
   });
 
   // Syntax stability patch applied
+  renderStandMenu();
   drawBackground(0);
 })();
 </script>
