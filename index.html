@@ -203,7 +203,8 @@
     'curseApply', 'curseBreak', 'laserCharge', 'laserFire', 'crescent', 'ui',
     'pause', 'resume', 'gameStart', 'newBest', 'standSpawn', 'standCollect',
     'standComplete', 'standTransform', 'standAbility', 'standEnd',
-    'envWarning', 'asteroidImpact', 'blackHole', 'sunWave', 'radiationHit'
+    'envWarning', 'asteroidImpact', 'blackHole', 'sunWave', 'radiationHit',
+    'envTeleport', 'envFlare', 'envFog', 'envElectric'
   ]);
   let audioUnlocked = false;
   let lastWhooshTime = 0;
@@ -333,6 +334,10 @@
     else if (name === 'blackHole') { playTone(85, .34, 'sawtooth', .07, 42, 0, 520); playNoise(.28, .06, 180, 'lowpass', 0, 80); }
     else if (name === 'sunWave') { playTone(260, .24, 'triangle', .08, 540, 0, 2400); playNoise(.22, .07, 1200, 'bandpass', .04, 2600); }
     else if (name === 'radiationHit') { playNoise(.12, .09, 1600, 'bandpass', 0, 3200); playTone(620, .08, 'square', .055, 980, .02, 3600); }
+    else if (name === 'envTeleport') { playTone(320, .12, 'triangle', .08, 880, 0, 3600); playNoise(.14, .055, 2300, 'bandpass', .02, 5200); }
+    else if (name === 'envFlare') { playNoise(.22, .11, 1500, 'bandpass', 0, 3600); playTone(220, .2, 'sawtooth', .08, 520, 0, 1800); }
+    else if (name === 'envFog') { playNoise(.34, .05, 180, 'lowpass'); playTone(120, .24, 'sine', .035, 85, 0, 500); }
+    else if (name === 'envElectric') { playTone(950, .055, 'square', .08, 1450, 0, 5200); playNoise(.07, .06, 4200, 'highpass'); playTone(430, .07, 'triangle', .045, 760, .035, 3200); }
   }
 
   function playHelperHit() {
@@ -589,7 +594,7 @@
 
   function reset() {
     debugBox.style.display = 'none';
-    player = { x: W / 2, y: H * .72, r: 21, vx: 0, vy: 0, hearts: 3, healProgress: 0, kiteStuck: null, gravityTimer: 0, gravityX: 0, gravityY: 0 };
+    player = { x: W / 2, y: H * .72, r: 21, vx: 0, vy: 0, hearts: 3, healProgress: 0, kiteStuck: null, gravityTimer: 0, gravityX: 0, gravityY: 0, sparkHits: 0, sparkTimer: 0 };
     targetX = player.x;
     targetY = player.y;
     objects = [];
@@ -1126,6 +1131,15 @@
     shake = 10;
     explode(o.x, o.y, '#7be8ff', 14);
     let laserHits = 0;
+    for (const env of environmentObjects) {
+      if (!env || env.hit || env.type !== 'debris') continue;
+      if (Math.abs(env.y - o.y) < 24 + env.r) {
+        env.hp = (env.hp || 2) - 2;
+        if (env.hp <= 0) env.hit = true;
+        explode(env.x, env.y, '#9be7ff', 10);
+        playSfx('laserFire');
+      }
+    }
     const snapshot = objects.slice();
     for (const other of snapshot) {
       if (!other || other.hit || other === o || HELPER_TYPES.has(other.type) || ENVIRONMENT_IMMUNE_TYPES.has(other.type) || !other.entered) continue;
@@ -1380,7 +1394,7 @@
 
   function spawnEnvironmentEvent() {
     if (environmentEvents.length || runTime < 45) return;
-    const types = ['asteroidBelt', 'blackHole', 'sunRadiation'];
+    const types = ['asteroidBelt', 'blackHole', 'sunRadiation', 'meteorStorm', 'gravityRift', 'solarFlareWall', 'frozenMoon', 'satelliteGraveyard', 'wormholePair', 'cosmicJellyfish', 'darkMatterFog', 'planetRingSweep', 'starNursery'];
     const type = types[Math.floor(Math.random() * types.length)];
     const id = nextEnvironmentId++;
     if (type === 'asteroidBelt') {
@@ -1394,6 +1408,40 @@
       const side = Math.random() < .5 ? -1 : 1;
       environmentEvents.push({ id, type, timer: 17, max: 17, x: side < 0 ? -95 : W + 95, y: rand(70, H * .38), r: Math.max(155, Math.min(W, H) * .28), waveTimer: 1.2 });
       showEvent('SUN RADIATION');
+    }
+    const event = environmentEvents[environmentEvents.length - 1];
+    if (type === 'meteorStorm') {
+      Object.assign(event, { timer: 15, max: 15, spawnTimer: 0 });
+      showEvent('METEOR STORM');
+    } else if (type === 'gravityRift') {
+      Object.assign(event, { timer: 16, max: 16, x: rand(W * .25, W * .75), y: rand(H * .18, H * .72), r: Math.max(70, Math.min(W, H) * .13), angle: rand(0, Math.PI) });
+      showEvent('GRAVITY RIFT');
+    } else if (type === 'solarFlareWall') {
+      const fromLeft = Math.random() < .5;
+      Object.assign(event, { timer: 11, max: 11, x: fromLeft ? -90 : W + 90, vx: fromLeft ? rand(95, 145) : -rand(95, 145), width: Math.max(62, W * .14), burnTimer: 0 });
+      showEvent('SOLAR FLARE WALL');
+    } else if (type === 'frozenMoon') {
+      Object.assign(event, { timer: 18, max: 18, x: -130, y: rand(H * .22, H * .62), vx: rand(42, 66), r: Math.max(78, Math.min(W, H) * .15) });
+      showEvent('FROZEN MOON');
+    } else if (type === 'satelliteGraveyard') {
+      Object.assign(event, { timer: 19, max: 19, spawnTimer: 0, spawned: false });
+      showEvent('SATELLITE GRAVEYARD');
+    } else if (type === 'wormholePair') {
+      Object.assign(event, { timer: 18, max: 18, ax: rand(70, W * .42), ay: rand(95, H - 100), bx: rand(W * .58, W - 70), by: rand(95, H - 100), r: 42 });
+      showEvent('WORMHOLE PAIR');
+    } else if (type === 'cosmicJellyfish') {
+      Object.assign(event, { timer: 18, max: 18, x: -100, y: rand(H * .22, H * .48), vx: rand(32, 54), r: Math.max(58, Math.min(W, H) * .12) });
+      showEvent('COSMIC JELLYFISH');
+    } else if (type === 'darkMatterFog') {
+      Object.assign(event, { timer: 16, max: 16, fogAlpha: .62 });
+      showEvent('DARK MATTER FOG');
+      playSfx('envFog');
+    } else if (type === 'planetRingSweep') {
+      Object.assign(event, { timer: 16, max: 16, x: W * .5, y: H + 180, r: Math.max(220, W * .58), ringY: -90, ringSpeed: (H + 220) / 13 });
+      showEvent('PLANET RING SWEEP');
+    } else if (type === 'starNursery') {
+      Object.assign(event, { timer: 19, max: 19, x: W * .5, y: H * .42, r: Math.max(180, Math.min(W, H) * .38), spawnTimer: 0, sparkHits: 0 });
+      showEvent('STAR NURSERY');
     }
     playSfx('envWarning');
     shake = Math.max(shake, 12);
@@ -1413,6 +1461,58 @@
       angle: rand(0, Math.PI * 2),
       spin: rand(-3.5, 3.5),
       points: Array.from({ length: 9 }, () => rand(.72, 1.08)),
+      hit: false
+    });
+  }
+
+  function spawnMeteor(event) {
+    const r = rand(12, 34);
+    environmentObjects.push({
+      id: nextEnvironmentId++,
+      type: 'meteor',
+      x: rand(-60, W + 60),
+      y: -r - rand(20, 120),
+      r,
+      vx: rand(-85, 130),
+      vy: rand(250, 430),
+      angle: rand(0, Math.PI * 2),
+      spin: rand(-6, 6),
+      hit: false
+    });
+  }
+
+  function spawnSatelliteDebris(event) {
+    const big = Math.random() < .38;
+    environmentObjects.push({
+      id: nextEnvironmentId++,
+      type: 'debris',
+      x: rand(20, W - 20),
+      y: rand(-90, H * .58),
+      w: big ? rand(56, 96) : rand(28, 54),
+      h: big ? rand(16, 28) : rand(10, 20),
+      r: big ? 38 : 22,
+      vx: rand(-55, 55),
+      vy: rand(35, 90),
+      angle: rand(0, Math.PI * 2),
+      spin: rand(-1.8, 1.8),
+      hp: big ? 4 : 2,
+      hit: false
+    });
+  }
+
+  function spawnNurserySpark(event) {
+    if (environmentObjects.filter(o => o && !o.hit && o.type === 'spark').length > 22) return;
+    const a = rand(0, Math.PI * 2);
+    const d = rand(0, event.r * .85);
+    environmentObjects.push({
+      id: nextEnvironmentId++,
+      type: 'spark',
+      x: event.x + Math.cos(a) * d,
+      y: event.y + Math.sin(a) * d,
+      r: rand(5, 10),
+      vx: rand(-45, 45),
+      vy: rand(-35, 55),
+      color: `hsl(${Math.floor(rand(0, 360))},100%,68%)`,
       hit: false
     });
   }
@@ -1460,6 +1560,103 @@
     chainTimer = 1.1;
   }
 
+  function damageObjectFromEnvironment(o, damage, color = '#ffb000') {
+    if (!o || o.hit) return;
+    if (o.type === 'circle') triggerExplosion(o);
+    else if (o.type === 'friendlyBomb') triggerFriendlyBomb(o);
+    else if (ENEMY_TYPES.has(o.type)) damageEnemy(o, damage, color);
+    else if (o.type === 'standPiece' || HELPER_TYPES.has(o.type)) {
+      playHelperHit();
+      explode(o.x, o.y, color, 6);
+    }
+  }
+
+  function collideEnvironmentBody(env, playerDamageReason, color = '#ffb000') {
+    if (!env || env.hit) return;
+    if (Math.hypot(player.x - env.x, player.y - env.y) < player.r + env.r) {
+      const dx = player.x - env.x, dy = player.y - env.y, d = Math.max(1, Math.hypot(dx, dy));
+      player.vx += (dx / d) * 540; player.vy += (dy / d) * 540;
+      if (env.type === 'debris') {
+        addFloatingText('COVER', env.x, env.y - 20, '#9be7ff', 13);
+      } else if (env.type === 'spark') {
+        player.sparkTimer = 1.4;
+        player.sparkHits = (player.sparkHits || 0) + 1;
+        if (player.sparkHits >= 3) {
+          damagePlayer('Burned by baby star sparks.');
+          player.sparkHits = 0;
+        } else addFloatingText(player.sparkHits + '/3 SPARK', player.x, player.y - 28, env.color || '#ffffff', 13);
+      } else damagePlayer(playerDamageReason);
+      if (env.type !== 'debris') {
+        environmentImpact(env.x, env.y, color, 16);
+        env.hit = true;
+      }
+      return;
+    }
+    for (const b of bullets) {
+      if (!b || b.dead) continue;
+      if (Math.hypot(b.x - env.x, b.y - env.y) < (b.r || 4) + env.r) {
+        if (env.type === 'spark') {
+          b.dead = true;
+          env.hit = true;
+          score += 12 * scoreMultiplier;
+          addFloatingText('+SPARK', env.x, env.y, env.color || '#ffffff', 14);
+          explode(env.x, env.y, env.color || '#ffffff', 8);
+        } else {
+          b.dead = true;
+          env.hp = (env.hp || 1) - (b.damage || 1);
+          env.vx += (b.vx || 0) * .025;
+          env.vy += (b.vy || 0) * .025;
+          if (env.hp <= 0) env.hit = true;
+          environmentImpact(b.x, b.y, color, 7);
+        }
+        break;
+      }
+    }
+    for (const o of objects) {
+      if (!o || o.hit || !o.entered) continue;
+      if (Math.hypot(o.x - env.x, o.y - env.y) < o.r + env.r) {
+        const dx = o.x - env.x, dy = o.y - env.y, d = Math.max(1, Math.hypot(dx, dy));
+        o.vx = (o.vx || 0) + (dx / d) * 460;
+        o.vy = (o.vy || 0) + (dy / d) * 460;
+        damageObjectFromEnvironment(o, env.type === 'meteor' ? 3 : 2, color);
+        if (env.type === 'spark' && ENEMY_TYPES.has(o.type)) {
+          o.radiationTimer = Math.max(o.radiationTimer || 0, 2.1);
+          env.hit = true;
+          playSfx('radiationHit');
+        } else {
+          environmentImpact(env.x, env.y, color, 14);
+          env.hit = true;
+        }
+        chainTimer = 1.1;
+        break;
+      }
+    }
+  }
+
+  function teleportTarget(target, x, y, cooldown = .75) {
+    if (!target || target.portalCooldown > 0) return false;
+    target.x = x + rand(-24, 24);
+    target.y = y + rand(-24, 24);
+    target.portalCooldown = cooldown;
+    const a = Math.atan2(target.vy || 0, target.vx || 1) + rand(-.85, .85);
+    const sp = Math.max(160, Math.hypot(target.vx || 0, target.vy || 0));
+    target.vx = Math.cos(a) * sp;
+    target.vy = Math.sin(a) * sp;
+    explode(target.x, target.y, '#9b6cff', 10);
+    playSfx('envTeleport');
+    return true;
+  }
+
+  function applyPullToTarget(target, x, y, radius, strength, dt) {
+    const dx = x - target.x, dy = y - target.y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    if (d > radius) return false;
+    const force = (1 - d / radius) * strength;
+    target.vx = (target.vx || 0) + (dx / d) * force * dt;
+    target.vy = (target.vy || 0) + (dy / d) * force * dt;
+    return true;
+  }
+
   function blackHoleShockwave(hole) {
     playSfx('bombExplode');
     explode(hole.x, hole.y, '#7b5cff', 70);
@@ -1486,6 +1683,8 @@
       const force = (1 - d / pullR) * (1 - d / pullR) * 1700 * strength;
       target.vx = (target.vx || 0) + (dx / d) * force * dt;
       target.vy = (target.vy || 0) + (dy / d) * force * dt;
+      target.x += (dx / d) * force * dt * dt * .22;
+      target.y += (dy / d) * force * dt * dt * .22;
       return d < swallow;
     };
     if (pull(player, 1.05)) {
@@ -1518,6 +1717,13 @@
           o.hit = true;
           playSfx('blackHole');
         }
+      }
+    }
+    for (const env of environmentObjects) {
+      if (!env || env.hit || env.type === 'sunWave') continue;
+      if (pull(env, env.type === 'debris' ? .95 : 1.1)) {
+        if (env.type === 'meteor' || env.type === 'asteroid') environmentImpact(env.x, env.y, '#7b5cff', 20);
+        env.hit = true;
       }
     }
   }
@@ -1568,6 +1774,104 @@
   function applyEnvironmentForces(dt) {
     for (const event of environmentEvents) {
       if (event.type === 'blackHole') applyBlackHoleForces(event, dt);
+      else if (event.type === 'gravityRift') {
+        applyPullToTarget(player, event.x, event.y, event.r * 3.4, 760, dt);
+        if (Math.hypot(player.x - event.x, player.y - event.y) < event.r * .55) teleportTarget(player, event.x + rand(-event.r * 2, event.r * 2), event.y + rand(-event.r * 2, event.r * 2), 1.1);
+        for (const b of bullets) {
+          if (!b || b.dead) continue;
+          applyPullToTarget(b, event.x, event.y, event.r * 3.1, 940, dt);
+          if (Math.hypot(b.x - event.x, b.y - event.y) < event.r * .48) teleportTarget(b, event.x + rand(-event.r * 2.4, event.r * 2.4), event.y + rand(-event.r * 2.4, event.r * 2.4), .55);
+        }
+        for (const o of objects) {
+          if (!o || o.hit) continue;
+          applyPullToTarget(o, event.x, event.y, event.r * 3.2, 760, dt);
+          if (Math.hypot(o.x - event.x, o.y - event.y) < event.r * .48) teleportTarget(o, event.x + rand(-event.r * 2.2, event.r * 2.2), event.y + rand(-event.r * 2.2, event.r * 2.2), .85);
+        }
+        for (const env of environmentObjects) {
+          if (!env || env.hit || env.type === 'sunWave') continue;
+          applyPullToTarget(env, event.x, event.y, event.r * 3.0, 680, dt);
+          if (Math.hypot(env.x - event.x, env.y - event.y) < event.r * .48) teleportTarget(env, event.x + rand(-event.r * 2, event.r * 2), event.y + rand(-event.r * 2, event.r * 2), .8);
+        }
+      } else if (event.type === 'solarFlareWall') {
+        const insidePlayer = Math.abs(player.x - event.x) < event.width * .48;
+        if (insidePlayer) { damagePlayer('Burned by a solar flare wall.'); player.vx += Math.sign(player.x - event.x || 1) * 520 * dt; }
+        for (const b of bullets) {
+          if (!b || b.dead || Math.abs(b.x - event.x) > event.width * .55) continue;
+          b.damage = Math.max(b.damage || 1, 3);
+          b.color = '#ff8c1a';
+          b.stand = b.stand || 'fire';
+          b.vx += Math.sign(b.vx || 1) * 90 * dt;
+        }
+        for (const o of objects) {
+          if (!o || o.hit || Math.abs(o.x - event.x) > event.width * .6) continue;
+          if (o.type === 'circle' || o.type === 'friendlyBomb') { if (Math.random() < .035) o.type === 'circle' ? triggerExplosion(o) : triggerFriendlyBomb(o); }
+          else if (ENEMY_TYPES.has(o.type)) damageEnemy(o, .035 * 60 * dt, '#ff8c1a');
+        }
+      } else if (event.type === 'frozenMoon') {
+        applyPullToTarget(player, event.x, event.y, event.r * 2.6, 260, dt);
+        if (Math.hypot(player.x - event.x, player.y - event.y) < event.r * 2.1) { player.vx *= .995; player.gravityTimer = Math.max(player.gravityTimer || 0, .12); player.gravityX = rand(-120, 120); player.gravityY = rand(-60, 120); }
+        for (const b of bullets) {
+          if (!b || b.dead) continue;
+          if (Math.hypot(b.x - event.x, b.y - event.y) < event.r * 2.2) { b.vx *= .985; b.vy *= .985; b.pierce = Math.max(b.pierce || 0, 2); b.color = '#baf4ff'; }
+        }
+        for (const o of objects) {
+          if (!o || o.hit) continue;
+          if (Math.hypot(o.x - event.x, o.y - event.y) < event.r * 2.15) {
+            if (ENEMY_TYPES.has(o.type)) o.slowDebuff = Math.max(o.slowDebuff || 0, 1.1);
+            if (o.type === 'circle') o.waterlogged = true;
+          }
+        }
+      } else if (event.type === 'wormholePair') {
+        const worm = (target) => {
+          if (!target) return;
+          if (Math.hypot(target.x - event.ax, target.y - event.ay) < event.r) teleportTarget(target, event.bx, event.by);
+          else if (Math.hypot(target.x - event.bx, target.y - event.by) < event.r) teleportTarget(target, event.ax, event.ay);
+        };
+        worm(player);
+        for (const b of bullets) if (b && !b.dead) worm(b);
+        for (const o of objects) if (o && !o.hit) worm(o);
+        for (const env of environmentObjects) if (env && !env.hit) worm(env);
+      } else if (event.type === 'cosmicJellyfish') {
+        for (let i = -2; i <= 2; i++) {
+          const tx = event.x + i * event.r * .36 + Math.sin(runTime * 2 + i) * 18;
+          const top = event.y + event.r * .45, bottom = event.y + event.r * 3.1;
+          if (player.x > tx - 16 && player.x < tx + 16 && player.y > top && player.y < bottom) damagePlayer('Shocked by cosmic jellyfish tentacles.');
+          for (const b of bullets) {
+            if (!b || b.dead) continue;
+            if (b.x > tx - 18 && b.x < tx + 18 && b.y > top && b.y < bottom) { b.electric = true; b.color = '#7df9ff'; b.damage = Math.max(b.damage || 1, 2); }
+          }
+          for (const o of objects) {
+            if (!o || o.hit || !ENEMY_TYPES.has(o.type)) continue;
+            if (o.x > tx - 20 && o.x < tx + 20 && o.y > top && o.y < bottom) { o.confusedTimer = Math.max(o.confusedTimer || 0, .75); o.vx *= .88; o.vy *= .88; }
+          }
+        }
+      } else if (event.type === 'darkMatterFog') {
+        player.vx *= .985; player.vy *= .985;
+        for (const b of bullets) { if (b && !b.dead) { b.vx *= .992; b.vy *= .992; } }
+        for (const o of objects) { if (o && !o.hit && o.homing) o.confusedTimer = Math.max(o.confusedTimer || 0, .18); }
+      } else if (event.type === 'planetRingSweep') {
+        const ringY = event.ringY;
+        const hitBand = 30;
+        if (Math.abs(player.y - ringY) < hitBand + player.r) { damagePlayer('Cut by a planet ring sweep.'); player.vy += player.y < ringY ? -420 : 420; }
+        for (const b of bullets) {
+          if (!b || b.dead || Math.abs(b.y - ringY) > hitBand) continue;
+          b.vx += Math.sin((b.x - W * .5) / W * Math.PI) * 360 * dt;
+          b.vy *= .86;
+        }
+        for (const o of objects) {
+          if (!o || o.hit || Math.abs(o.y - ringY) > hitBand + o.r) continue;
+          o.vy += o.y < ringY ? -520 * dt : 520 * dt;
+          if (ENEMY_TYPES.has(o.type)) damageEnemy(o, 1, '#d9c1ff');
+          if (o.type === 'circle') triggerExplosion(o);
+        }
+      } else if (event.type === 'starNursery') {
+        if (Math.hypot(player.x - event.x, player.y - event.y) < event.r) { player.vx += Math.sin(runTime * 2) * 26 * dt; player.vy += Math.cos(runTime * 1.6) * 18 * dt; }
+        for (const o of objects) {
+          if (!o || o.hit || Math.hypot(o.x - event.x, o.y - event.y) > event.r) continue;
+          if (ENEMY_TYPES.has(o.type)) o.radiationTimer = Math.max(o.radiationTimer || 0, .4);
+          if (o.type === 'circle') o.impactBomb = true;
+        }
+      }
     }
     for (const env of environmentObjects) {
       if (!env || env.hit) continue;
@@ -1575,6 +1879,29 @@
         applySunWave(env, dt);
         continue;
       }
+      if (env.type === 'meteor') {
+        for (const debris of environmentObjects) {
+          if (!debris || debris.hit || debris === env || debris.type !== 'debris') continue;
+          if (Math.hypot(debris.x - env.x, debris.y - env.y) < debris.r + env.r) {
+            debris.hp = (debris.hp || 2) - 1;
+            if (debris.hp <= 0) debris.hit = true;
+            environmentImpact(env.x, env.y, '#ff6a00', 22);
+            env.hit = true;
+            break;
+          }
+        }
+        if (!env.hit) collideEnvironmentBody(env, 'Hit by a meteor.', '#ff6a00');
+        continue;
+      }
+      if (env.type === 'debris') {
+        if (Math.hypot(player.x - env.x, player.y - env.y) < player.r + env.r) {
+          const dx = player.x - env.x, dy = player.y - env.y, d = Math.max(1, Math.hypot(dx, dy));
+          player.vx += (dx / d) * 260; player.vy += (dy / d) * 260;
+        }
+        collideEnvironmentBody(env, 'Hit by satellite debris.', '#9be7ff');
+        continue;
+      }
+      if (env.type === 'spark') { collideEnvironmentBody(env, 'Burned by baby star sparks.', env.color || '#ffffff'); continue; }
       if (env.type !== 'asteroid') continue;
       if (Math.hypot(player.x - env.x, player.y - env.y) < player.r + env.r) {
         damagePlayer('Hit by an asteroid.');
@@ -1605,6 +1932,10 @@
   }
 
   function updateEnvironmentEvents(dt) {
+    player.portalCooldown = Math.max(0, (player.portalCooldown || 0) - dt);
+    for (const b of bullets) if (b) b.portalCooldown = Math.max(0, (b.portalCooldown || 0) - dt);
+    for (const o of objects) if (o) o.portalCooldown = Math.max(0, (o.portalCooldown || 0) - dt);
+    for (const env of environmentObjects) if (env) env.portalCooldown = Math.max(0, (env.portalCooldown || 0) - dt);
     const majorActive = environmentEvents.length > 0;
     if (!majorActive) {
       environmentTimer -= dt;
@@ -1630,6 +1961,38 @@
           event.waveTimer = rand(2.1, 3.0);
           triggerSunWave(event);
         }
+      } else if (event.type === 'meteorStorm') {
+        event.spawnTimer -= dt;
+        if (event.spawnTimer <= 0) {
+          for (let i = 0; i < Math.floor(rand(2, 5)); i++) spawnMeteor(event);
+          event.spawnTimer = rand(.32, .7);
+          playSfx('envFlare');
+        }
+      } else if (event.type === 'gravityRift') {
+        event.angle += dt * 1.2;
+      } else if (event.type === 'solarFlareWall') {
+        event.x += event.vx * dt;
+        event.burnTimer -= dt;
+        if (event.burnTimer <= 0) { event.burnTimer = .9; playSfx('envFlare'); }
+      } else if (event.type === 'frozenMoon') {
+        event.x += event.vx * dt;
+        event.y += Math.sin(runTime * .8) * 16 * dt;
+      } else if (event.type === 'satelliteGraveyard') {
+        event.spawnTimer -= dt;
+        if (!event.spawned) {
+          for (let i = 0; i < 10; i++) spawnSatelliteDebris(event);
+          event.spawned = true;
+        }
+        if (event.spawnTimer <= 0) { event.spawnTimer = rand(1.2, 2.2); spawnSatelliteDebris(event); }
+      } else if (event.type === 'wormholePair') {
+        event.ax += Math.sin(runTime * .7) * 9 * dt; event.by += Math.cos(runTime * .6) * 9 * dt;
+      } else if (event.type === 'cosmicJellyfish') {
+        event.x += event.vx * dt; event.y += Math.sin(runTime * 1.1) * 20 * dt;
+      } else if (event.type === 'planetRingSweep') {
+        event.ringY += event.ringSpeed * dt;
+      } else if (event.type === 'starNursery') {
+        event.spawnTimer -= dt;
+        if (event.spawnTimer <= 0) { event.spawnTimer = rand(.45, .9); for (let i = 0; i < 2; i++) spawnNurserySpark(event); }
       }
     }
     for (const env of environmentObjects) {
@@ -1638,6 +2001,20 @@
         env.x += env.vx * dt;
         env.y += env.vy * dt;
         env.angle += env.spin * dt;
+      } else if (env.type === 'meteor') {
+        env.x += env.vx * dt;
+        env.y += env.vy * dt;
+        env.angle += env.spin * dt;
+      } else if (env.type === 'debris') {
+        env.x += env.vx * dt;
+        env.y += env.vy * dt;
+        env.angle += env.spin * dt;
+        env.vx *= .998; env.vy *= .998;
+      } else if (env.type === 'spark') {
+        env.x += env.vx * dt;
+        env.y += env.vy * dt;
+        env.vx += Math.sin(runTime * 2 + env.id) * 14 * dt;
+        env.vy += Math.cos(runTime * 1.7 + env.id) * 12 * dt;
       }
     }
     applyEnvironmentForces(dt);
@@ -1656,6 +2033,9 @@
       if (!env || env.hit) return false;
       if (env.type === 'sunWave') return env.life > 0 && env.r < env.maxR;
       if (env.type === 'asteroid') return env.y < H + 180 && env.x > -220 && env.x < W + 220;
+      if (env.type === 'meteor') return env.y < H + 180 && env.x > -160 && env.x < W + 160;
+      if (env.type === 'debris') return env.y < H + 160 && env.x > -160 && env.x < W + 160;
+      if (env.type === 'spark') return env.y > -80 && env.y < H + 80 && env.x > -80 && env.x < W + 80;
       return true;
     }).slice(-70);
   }
@@ -1694,6 +2074,46 @@
         ctx.shadowBlur = 46; ctx.shadowColor = '#ffb000';
         ctx.beginPath(); ctx.arc(event.x, event.y, event.r, 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0;
+      } else if (event.type === 'gravityRift') {
+        ctx.save(); ctx.translate(event.x, event.y); ctx.rotate(event.angle);
+        ctx.globalAlpha = .75; ctx.strokeStyle = '#b06cff'; ctx.lineWidth = 8; ctx.shadowBlur = 28; ctx.shadowColor = '#7b5cff';
+        ctx.beginPath(); ctx.moveTo(-event.r * .45, -event.r * 1.7); ctx.bezierCurveTo(event.r * .65, -event.r * .8, -event.r * .65, event.r * .55, event.r * .45, event.r * 1.7); ctx.stroke();
+        ctx.globalAlpha = .18; ctx.fillStyle = '#7b5cff'; ctx.beginPath(); ctx.arc(0, 0, event.r * 2.8, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else if (event.type === 'solarFlareWall') {
+        const g = ctx.createLinearGradient(event.x - event.width, 0, event.x + event.width, 0);
+        g.addColorStop(0, 'rgba(255,80,0,0)'); g.addColorStop(.5, 'rgba(255,190,40,.82)'); g.addColorStop(1, 'rgba(255,80,0,0)');
+        ctx.fillStyle = g; ctx.shadowBlur = 30; ctx.shadowColor = '#ff7a00'; ctx.fillRect(event.x - event.width, 0, event.width * 2, H); ctx.shadowBlur = 0;
+      } else if (event.type === 'frozenMoon') {
+        const g = ctx.createRadialGradient(event.x - event.r * .25, event.y - event.r * .25, 4, event.x, event.y, event.r);
+        g.addColorStop(0, '#ffffff'); g.addColorStop(.55, '#baf4ff'); g.addColorStop(1, '#416a8a');
+        ctx.fillStyle = g; ctx.shadowBlur = 25; ctx.shadowColor = '#baf4ff'; ctx.beginPath(); ctx.arc(event.x, event.y, event.r, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.globalAlpha = .12; ctx.strokeStyle = '#baf4ff'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(event.x, event.y, event.r * 2.2, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      } else if (event.type === 'wormholePair') {
+        for (const p of [{ x: event.ax, y: event.ay, c: '#7b5cff' }, { x: event.bx, y: event.by, c: '#00f5ff' }]) {
+          ctx.strokeStyle = p.c; ctx.lineWidth = 7; ctx.shadowBlur = 24; ctx.shadowColor = p.c;
+          ctx.beginPath(); ctx.arc(p.x, p.y, event.r, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = .22; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, event.r * .72, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        }
+      } else if (event.type === 'cosmicJellyfish') {
+        ctx.fillStyle = 'rgba(125,249,255,.32)'; ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 5; ctx.shadowBlur = 26; ctx.shadowColor = '#7df9ff';
+        ctx.beginPath(); ctx.ellipse(event.x, event.y, event.r * 1.15, event.r * .72, 0, Math.PI, Math.PI * 2); ctx.fill(); ctx.stroke();
+        for (let i = -2; i <= 2; i++) {
+          const tx = event.x + i * event.r * .36 + Math.sin(runTime * 2 + i) * 18;
+          ctx.beginPath(); ctx.moveTo(tx, event.y + event.r * .45); ctx.bezierCurveTo(tx + 24, event.y + event.r, tx - 28, event.y + event.r * 2.1, tx + 6, event.y + event.r * 3.1); ctx.stroke();
+        }
+      } else if (event.type === 'darkMatterFog') {
+        ctx.globalAlpha = event.fogAlpha || .58; ctx.fillStyle = '#070311'; ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = .22; ctx.fillStyle = '#6f3dff'; for (let i = 0; i < 18; i++) { ctx.beginPath(); ctx.arc((i * 97 + performance.now() / 35) % W, (i * 53 + performance.now() / 55) % H, 48, 0, Math.PI * 2); ctx.fill(); }
+        ctx.globalAlpha = 1;
+      } else if (event.type === 'planetRingSweep') {
+        ctx.globalAlpha = .22; ctx.fillStyle = '#9a6cff'; ctx.beginPath(); ctx.arc(event.x, event.y, event.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#d9c1ff'; ctx.lineWidth = 34; ctx.shadowBlur = 24; ctx.shadowColor = '#d9c1ff';
+        ctx.beginPath(); ctx.ellipse(W * .5, event.ringY, W * .78, 58, -.12, 0, Math.PI * 2); ctx.stroke(); ctx.shadowBlur = 0;
+      } else if (event.type === 'starNursery') {
+        const g = ctx.createRadialGradient(event.x, event.y, 10, event.x, event.y, event.r);
+        g.addColorStop(0, 'rgba(255,255,255,.2)'); g.addColorStop(.35, 'rgba(255,0,190,.18)'); g.addColorStop(.7, 'rgba(0,220,255,.14)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(event.x, event.y, event.r, 0, Math.PI * 2); ctx.fill();
       }
     }
     for (const env of environmentObjects) {
@@ -1717,6 +2137,20 @@
         ctx.beginPath(); ctx.arc(-env.r * .22, -env.r * .1, env.r * .18, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(env.r * .28, env.r * .24, env.r * .13, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
+      } else if (env.type === 'meteor') {
+        ctx.save(); ctx.translate(env.x, env.y); ctx.rotate(env.angle);
+        ctx.shadowBlur = 24; ctx.shadowColor = '#ff7a00'; ctx.fillStyle = '#ff6a00'; ctx.beginPath(); ctx.arc(0, 0, env.r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,220,80,.45)'; ctx.beginPath(); ctx.moveTo(-env.r, 0); ctx.lineTo(-env.r * 4, -env.r * .75); ctx.lineTo(-env.r * 2, env.r * .9); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      } else if (env.type === 'debris') {
+        ctx.save(); ctx.translate(env.x, env.y); ctx.rotate(env.angle);
+        ctx.fillStyle = '#1c2b3a'; ctx.strokeStyle = '#9be7ff'; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.shadowColor = '#9be7ff';
+        ctx.fillRect(-env.w / 2, -env.h / 2, env.w, env.h); ctx.strokeRect(-env.w / 2, -env.h / 2, env.w, env.h);
+        ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(-env.w * .35, 0); ctx.lineTo(env.w * .35, 0); ctx.stroke();
+        ctx.restore();
+      } else if (env.type === 'spark') {
+        ctx.fillStyle = env.color || '#ffffff'; ctx.shadowBlur = 18; ctx.shadowColor = ctx.fillStyle;
+        ctx.beginPath(); ctx.arc(env.x, env.y, env.r, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
       } else if (env.type === 'sunWave') {
         const alpha = Math.max(0, env.life / env.max);
         ctx.globalAlpha = alpha * .45;
@@ -1728,6 +2162,25 @@
         ctx.globalAlpha = 1;
         ctx.shadowBlur = 0;
       }
+    }
+    ctx.restore();
+  }
+
+  function drawEnvironmentOverlays() {
+    const fog = environmentEvents.find(event => event.type === 'darkMatterFog');
+    if (!fog) return;
+    ctx.save();
+    ctx.globalAlpha = discoActive ? .28 : .42;
+    ctx.fillStyle = '#05020c';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = discoActive ? .32 : .18;
+    ctx.strokeStyle = discoActive ? '#ff00ff' : '#7b5cff';
+    ctx.lineWidth = 2;
+    for (let y = -40 + (performance.now() / 45) % 80; y < H + 60; y += 80) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x < W; x += 45) ctx.lineTo(x, y + Math.sin(x / 44 + performance.now() / 480) * 16);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -1876,6 +2329,18 @@
       }
       splitOwlFeather(b, o);
       damageEnemy(o, b.damage || 1, b.color || (discoActive ? '#ff00ff' : '#ffe680'));
+      if (b.electric) {
+        let jumps = 0;
+        for (const other of objects) {
+          if (!other || other.hit || other === o || !ENEMY_TYPES.has(other.type) || jumps >= 3) continue;
+          if (Math.hypot(other.x - o.x, other.y - o.y) < 135) {
+            damageEnemy(other, 1, '#7df9ff');
+            explode(other.x, other.y, '#7df9ff', 8);
+            jumps++;
+          }
+        }
+        if (jumps) playSfx('envElectric');
+      }
       if (b.stand === 'crocShard') explode(o.x, o.y, '#ff245c', 7);
     }
     if (b.pierce && b.pierce > 1) {
@@ -2516,6 +2981,8 @@
       player.vx += player.gravityX * dt;
       player.vy += player.gravityY * dt;
     }
+    player.sparkTimer = Math.max(0, (player.sparkTimer || 0) - dt);
+    if (player.sparkTimer <= 0) player.sparkHits = 0;
 
     const difficultyFactor = getDifficultyFactor();
     worldSpeed = 55 + difficulty * 2.2;
@@ -2570,6 +3037,17 @@
         if (d < pulseRadius) {
           b.vx += (dx / d) * 260 * dt;
           b.vy += (dy / d) * 260 * dt;
+        }
+      }
+
+      for (const env of environmentObjects) {
+        if (!env || env.hit || env.type === 'sunWave') continue;
+        const dx = o.x - env.x, dy = o.y - env.y;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        if (d < pulseRadius) {
+          const dir = reversePulse ? -1 : 1;
+          env.vx = (env.vx || 0) + (dx / d) * 280 * dt * dir;
+          env.vy = (env.vy || 0) + (dy / d) * 280 * dt * dir;
         }
       }
     }
@@ -3480,6 +3958,7 @@
     drawBullets();
     drawPlayerTrail();
     drawPlayer();
+    drawEnvironmentOverlays();
     for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life / p.max); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
     for (const ft of floatingTexts) {
       ctx.globalAlpha = Math.max(0, ft.life / ft.max);
