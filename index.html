@@ -115,7 +115,7 @@
   const standMenuClose = document.getElementById('standMenuClose');
 
   let W = 0, H = 0, dpr = 1;
-  let player, objects, particles, bullets, floatingTexts, screenPulses;
+  let player, objects, particles, bullets, floatingTexts, screenPulses, environmentEvents, environmentObjects;
   let score, combo, best, running, paused, worldSpeed, spawnTimer, bulletTimer, shake, chainTimer, slowTimer, runTime, invincibleTimer;
   let discoCharge, discoActive, discoTimer, discoCooldownTimer, discoExtraLifeUsed;
   let clockFastTimer, batSlowTimer;
@@ -124,6 +124,7 @@
   let standOfferKey, standPieceQueue, standPiecesAppeared, standMenuOpen;
   let owlLaserTimer, jackalShadowCooldown, jackalShadowTimer, crocodileBombTimer;
   let scarabGears, windLanes, skyCutTimer, skyCuts, ramChargeMeter, ramChargeTimer, ramChargeDir, catClones, catCloneTimer, catDodgeCooldown, floodRings, puddles, hippoRingTimer, nextEffectId;
+  let environmentTimer, nextEnvironmentId;
   let pointerDown = false, targetX = 0, targetY = 0, lastTime = 0, eventToken = 0, nextObjectId = 1;
 
   const MAX_OBJECTS = 125;
@@ -201,7 +202,8 @@
     'pentagonPulse', 'hexSplit', 'hexVanish', 'starWarn', 'starDash', 'skullAura',
     'curseApply', 'curseBreak', 'laserCharge', 'laserFire', 'crescent', 'ui',
     'pause', 'resume', 'gameStart', 'newBest', 'standSpawn', 'standCollect',
-    'standComplete', 'standTransform', 'standAbility', 'standEnd'
+    'standComplete', 'standTransform', 'standAbility', 'standEnd',
+    'envWarning', 'asteroidImpact', 'blackHole', 'sunWave', 'radiationHit'
   ]);
   let audioUnlocked = false;
   let lastWhooshTime = 0;
@@ -326,6 +328,11 @@
     else if (name === 'standTransform') { playTone(180, .18, 'sawtooth', .09, 540, 0, 1800); playChord([540, 810, 1080], .26, 'triangle', .1); playNoise(.20, .08, 2200, 'bandpass', .03, 5200); }
     else if (name === 'standAbility') { playTone(760, .11, 'square', .08, 1180, 0, 4200); playNoise(.09, .05, 2600, 'highpass'); }
     else if (name === 'standEnd') { playTone(520, .18, 'triangle', .08, 180, 0, 2200); playNoise(.12, .035, 900, 'bandpass', .05); }
+    else if (name === 'envWarning') { playTone(180, .16, 'sawtooth', .11, 120, 0, 1200); playTone(180, .16, 'sawtooth', .11, 120, .18, 1200); playNoise(.2, .06, 560, 'bandpass', .02); }
+    else if (name === 'asteroidImpact') { playNoise(.18, .16, 260, 'lowpass'); playNoise(.1, .08, 980, 'bandpass'); playTone(110, .12, 'sawtooth', .08, 58, 0, 900); }
+    else if (name === 'blackHole') { playTone(85, .34, 'sawtooth', .07, 42, 0, 520); playNoise(.28, .06, 180, 'lowpass', 0, 80); }
+    else if (name === 'sunWave') { playTone(260, .24, 'triangle', .08, 540, 0, 2400); playNoise(.22, .07, 1200, 'bandpass', .04, 2600); }
+    else if (name === 'radiationHit') { playNoise(.12, .09, 1600, 'bandpass', 0, 3200); playTone(620, .08, 'square', .055, 980, .02, 3600); }
   }
 
   function playHelperHit() {
@@ -590,6 +597,8 @@
     bullets = [];
     floatingTexts = [];
     screenPulses = [];
+    environmentEvents = [];
+    environmentObjects = [];
     standProgress = createStandProgress();
     standUiKey = null;
     standOfferKey = null;
@@ -602,6 +611,8 @@
     standCollectAnim = null;
     playerTrail = [];
     nextEffectId = 1;
+    nextEnvironmentId = 1;
+    environmentTimer = 45;
     resetStandAbilityState();
     score = 0;
     combo = 1;
@@ -809,6 +820,7 @@
       gravityTimer: 0,
       gravityX: 0,
       gravityY: 0,
+      radiationTimer: 0,
       lockX: 0,
       lockY: 0,
       allied: false,
@@ -970,6 +982,7 @@
 
   function killEnemy(o, color = '#66f7ff', base = 35) {
     if (!o || o.hit || HELPER_TYPES.has(o.type)) return;
+    if (o.type === 'kite' || o.type === 'candle') return;
     if (o.type === 'skull') clearHomingFromSkull(o);
     o.hit = true;
     awardEnemyKill(o, base);
@@ -1047,7 +1060,7 @@
 
   function damageEnemy(o, amount = 1, color = '#ffe680') {
     if (!o || o.hit || HELPER_TYPES.has(o.type) || !ENEMY_TYPES.has(o.type)) return;
-    if (o.type === 'drum' || o.type === 'candle') return;
+    if (o.type === 'drum' || o.type === 'candle' || o.type === 'kite') return;
     playSfx('enemyHit');
     if (o.type === 'star') {
       explode(o.x, o.y, '#fff27a', 5);
@@ -1363,6 +1376,360 @@
       const a = (Math.PI * 2 / 14) * i;
       addBullet({ x: bomb.x, y: bomb.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, r: 4, life: .72, dead: false, damage: 2, stand: 'crocShard', color: '#ff245c' });
     }
+  }
+
+  function spawnEnvironmentEvent() {
+    if (environmentEvents.length || runTime < 45) return;
+    const types = ['asteroidBelt', 'blackHole', 'sunRadiation'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const id = nextEnvironmentId++;
+    if (type === 'asteroidBelt') {
+      environmentEvents.push({ id, type, timer: 18, max: 18, spawnTimer: 0, waves: 0, side: Math.random() < .5 ? 'left' : 'right' });
+      showEvent('ASTEROID BELT');
+    } else if (type === 'blackHole') {
+      const fromLeft = Math.random() < .5;
+      environmentEvents.push({ id, type, timer: 16, max: 16, x: fromLeft ? -120 : W + 120, y: rand(H * .22, H * .65), vx: fromLeft ? rand(45, 70) : -rand(45, 70), vy: rand(-12, 18), r: Math.max(86, Math.min(W, H) * .16), pullR: Math.max(260, Math.min(W, H) * .52) });
+      showEvent('BLACK HOLE');
+    } else {
+      const side = Math.random() < .5 ? -1 : 1;
+      environmentEvents.push({ id, type, timer: 17, max: 17, x: side < 0 ? -95 : W + 95, y: rand(70, H * .38), r: Math.max(155, Math.min(W, H) * .28), waveTimer: 1.2 });
+      showEvent('SUN RADIATION');
+    }
+    playSfx('envWarning');
+    shake = Math.max(shake, 12);
+  }
+
+  function spawnAsteroid(event) {
+    const fromLeft = event.side === 'left';
+    const r = rand(16, 48);
+    const x = fromLeft ? -r - rand(10, 80) : W + r + rand(10, 80);
+    const y = rand(-70, H * .55);
+    environmentObjects.push({
+      id: nextEnvironmentId++,
+      type: 'asteroid',
+      x, y, r,
+      vx: (fromLeft ? 1 : -1) * rand(170, 310),
+      vy: rand(130, 260),
+      angle: rand(0, Math.PI * 2),
+      spin: rand(-3.5, 3.5),
+      points: Array.from({ length: 9 }, () => rand(.72, 1.08)),
+      hit: false
+    });
+  }
+
+  function triggerSunWave(event) {
+    environmentObjects.push({
+      id: nextEnvironmentId++,
+      type: 'sunWave',
+      x: event.x,
+      y: event.y,
+      r: event.r * .25,
+      maxR: Math.max(W, H) * 1.35,
+      width: 34,
+      life: 2.6,
+      max: 2.6,
+      hitIds: new Set(),
+      hitPlayer: false
+    });
+    playSfx('sunWave');
+  }
+
+  function environmentImpact(x, y, color = '#c79a68', count = 18) {
+    explode(x, y, color, count);
+    playSfx('asteroidImpact');
+    shake = Math.max(shake, 9);
+  }
+
+  function asteroidHitObject(asteroid, o) {
+    if (!asteroid || asteroid.hit || !o || o.hit || !o.entered) return;
+    const dx = o.x - asteroid.x, dy = o.y - asteroid.y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    const force = clamp((asteroid.r + o.r - d) / Math.max(1, asteroid.r), .15, 1) * 520;
+    o.vx = (o.vx || 0) + (dx / d) * force;
+    o.vy = (o.vy || 0) + (dy / d) * force;
+    if (o.type === 'circle') triggerExplosion(o);
+    else if (o.type === 'friendlyBomb') triggerFriendlyBomb(o);
+    else if (ENEMY_TYPES.has(o.type)) damageEnemy(o, asteroid.r > 32 ? 3 : 2, '#c79a68');
+    else if (o.type === 'standPiece' || HELPER_TYPES.has(o.type)) {
+      o.vx += (dx / d) * 280;
+      o.vy += (dy / d) * 280;
+      playHelperHit();
+    }
+    environmentImpact(asteroid.x, asteroid.y);
+    asteroid.hit = true;
+    chainTimer = 1.1;
+  }
+
+  function blackHoleShockwave(hole) {
+    playSfx('bombExplode');
+    explode(hole.x, hole.y, '#7b5cff', 70);
+    shake = Math.max(shake, 22);
+    for (const o of objects) {
+      if (!o || o.hit) continue;
+      const dx = o.x - hole.x, dy = o.y - hole.y;
+      const d = Math.max(1, Math.hypot(dx, dy));
+      if (d < hole.pullR * .72) {
+        o.vx += (dx / d) * 680;
+        o.vy += (dy / d) * 680;
+        if (ENEMY_TYPES.has(o.type) && d < hole.r * 1.8) damageEnemy(o, 2, '#7b5cff');
+      }
+    }
+  }
+
+  function applyBlackHoleForces(event, dt) {
+    const swallow = event.r * .34;
+    const pullR = event.pullR;
+    const pull = (target, strength = 1) => {
+      const dx = event.x - target.x, dy = event.y - target.y;
+      const d = Math.max(1, Math.hypot(dx, dy));
+      if (d >= pullR) return false;
+      const force = (1 - d / pullR) * (1 - d / pullR) * 1700 * strength;
+      target.vx = (target.vx || 0) + (dx / d) * force * dt;
+      target.vy = (target.vy || 0) + (dy / d) * force * dt;
+      return d < swallow;
+    };
+    if (pull(player, 1.05)) {
+      damagePlayer('Pulled into a black hole.');
+      const dx = player.x - event.x, dy = player.y - event.y, d = Math.max(1, Math.hypot(dx, dy));
+      player.vx += (dx / d) * 620; player.vy += (dy / d) * 620;
+    }
+    for (const b of bullets) {
+      if (!b || b.dead) continue;
+      if (pull(b, 1.45)) b.dead = true;
+    }
+    for (const p of particles) {
+      if (!p) continue;
+      pull(p, .55);
+    }
+    for (const o of objects) {
+      if (!o || o.hit) continue;
+      if (pull(o, ENEMY_TYPES.has(o.type) ? 1 : .85)) {
+        if (o.type === 'circle' || o.type === 'friendlyBomb') {
+          if (o.type === 'circle') triggerExplosion(o); else triggerFriendlyBomb(o);
+          blackHoleShockwave(event);
+        } else if (o.type === 'kite' || o.type === 'candle') {
+          const dx = o.x - event.x, dy = o.y - event.y, d = Math.max(1, Math.hypot(dx, dy));
+          o.vx += (dx / d) * 520;
+          o.vy += (dy / d) * 520;
+        } else if (ENEMY_TYPES.has(o.type)) {
+          killEnemy(o, '#7b5cff', 45);
+          playSfx('blackHole');
+        } else {
+          o.hit = true;
+          playSfx('blackHole');
+        }
+      }
+    }
+  }
+
+  function applySunWave(wave, dt) {
+    wave.r += Math.max(W, H) * .42 * dt;
+    wave.life -= dt;
+    const band = wave.width;
+    const waveHit = (x, y, r = 0) => Math.abs(Math.hypot(x - wave.x, y - wave.y) - wave.r) < band + r;
+    if (!wave.hitPlayer && waveHit(player.x, player.y, player.r)) {
+      wave.hitPlayer = true;
+      player.vx += rand(-460, 460);
+      player.vy += rand(-180, 360);
+      player.gravityTimer = Math.max(player.gravityTimer || 0, .75);
+      player.gravityX = rand(-520, 520);
+      player.gravityY = rand(-220, 420);
+      playSfx('radiationHit');
+      addFloatingText('SLIP', player.x, player.y - 32, '#ffdf6b', 16);
+    }
+    for (const b of bullets) {
+      if (!b || b.dead || wave.hitIds.has(b)) continue;
+      if (waveHit(b.x, b.y, b.r || 4)) {
+        wave.hitIds.add(b);
+        b.vx += rand(-180, 180);
+        b.vy += rand(-90, 190);
+      }
+    }
+    for (const o of objects) {
+      if (!o || o.hit || !o.entered || wave.hitIds.has(o.id)) continue;
+      if (!waveHit(o.x, o.y, o.r)) continue;
+      wave.hitIds.add(o.id);
+      if (o.type === 'circle') {
+        o.impactBomb = true;
+        if (Math.random() < .42) triggerExplosion(o);
+        else addFloatingText('UNSTABLE', o.x, o.y - 24, '#ffb000', 14);
+      } else if (ENEMY_TYPES.has(o.type)) {
+        o.radiationTimer = Math.max(o.radiationTimer || 0, 1.45);
+        if (o.cursed || o.homing) clearCurse(o);
+        explode(o.x, o.y, '#ffdf6b', 8);
+      } else if (o.type === 'standPiece' || HELPER_TYPES.has(o.type)) {
+        o.vx += rand(-120, 120);
+        o.vy += rand(-80, 150);
+      }
+      playSfx('radiationHit');
+    }
+  }
+
+  function applyEnvironmentForces(dt) {
+    for (const event of environmentEvents) {
+      if (event.type === 'blackHole') applyBlackHoleForces(event, dt);
+    }
+    for (const env of environmentObjects) {
+      if (!env || env.hit) continue;
+      if (env.type === 'sunWave') {
+        applySunWave(env, dt);
+        continue;
+      }
+      if (env.type !== 'asteroid') continue;
+      if (Math.hypot(player.x - env.x, player.y - env.y) < player.r + env.r) {
+        damagePlayer('Hit by an asteroid.');
+        const dx = player.x - env.x, dy = player.y - env.y, d = Math.max(1, Math.hypot(dx, dy));
+        player.vx += (dx / d) * 520; player.vy += (dy / d) * 520;
+        environmentImpact(env.x, env.y);
+        env.hit = true;
+        continue;
+      }
+      for (const b of bullets) {
+        if (!b || b.dead) continue;
+        if (Math.hypot(b.x - env.x, b.y - env.y) < (b.r || 4) + env.r) {
+          b.dead = true;
+          env.vx += b.vx * .03;
+          env.vy += b.vy * .03;
+          environmentImpact(b.x, b.y, '#ffe680', 7);
+          break;
+        }
+      }
+      for (const o of objects) {
+        if (!o || o.hit || !o.entered) continue;
+        if (Math.hypot(o.x - env.x, o.y - env.y) < o.r + env.r) {
+          asteroidHitObject(env, o);
+          break;
+        }
+      }
+    }
+  }
+
+  function updateEnvironmentEvents(dt) {
+    const majorActive = environmentEvents.length > 0;
+    if (!majorActive) {
+      environmentTimer -= dt;
+      if (environmentTimer <= 0) spawnEnvironmentEvent();
+    }
+    for (const event of environmentEvents) {
+      event.timer -= dt;
+      if (event.type === 'asteroidBelt') {
+        event.spawnTimer -= dt;
+        if (event.spawnTimer <= 0 && event.timer > 2.2) {
+          const count = Math.floor(rand(2, 5));
+          for (let i = 0; i < count; i++) spawnAsteroid(event);
+          event.waves += 1;
+          event.spawnTimer = rand(.55, 1.05);
+          if (Math.random() < .32) event.side = event.side === 'left' ? 'right' : 'left';
+        }
+      } else if (event.type === 'blackHole') {
+        event.x += event.vx * dt;
+        event.y += event.vy * dt;
+      } else if (event.type === 'sunRadiation') {
+        event.waveTimer -= dt;
+        if (event.waveTimer <= 0) {
+          event.waveTimer = rand(2.1, 3.0);
+          triggerSunWave(event);
+        }
+      }
+    }
+    for (const env of environmentObjects) {
+      if (!env || env.hit) continue;
+      if (env.type === 'asteroid') {
+        env.x += env.vx * dt;
+        env.y += env.vy * dt;
+        env.angle += env.spin * dt;
+      }
+    }
+    applyEnvironmentForces(dt);
+    cleanupEnvironmentEvents();
+  }
+
+  function cleanupEnvironmentEvents() {
+    const before = environmentEvents.length;
+    environmentEvents = environmentEvents.filter(event => {
+      if (event.timer > 0) return true;
+      if (event.type === 'blackHole' && event.x > -240 && event.x < W + 240) return true;
+      return false;
+    });
+    if (before > 0 && environmentEvents.length === 0) environmentTimer = rand(35, 60);
+    environmentObjects = environmentObjects.filter(env => {
+      if (!env || env.hit) return false;
+      if (env.type === 'sunWave') return env.life > 0 && env.r < env.maxR;
+      if (env.type === 'asteroid') return env.y < H + 180 && env.x > -220 && env.x < W + 220;
+      return true;
+    }).slice(-70);
+  }
+
+  function drawEnvironmentEvents() {
+    ctx.save();
+    for (const event of environmentEvents) {
+      if (event.type === 'blackHole') {
+        const t = performance.now();
+        ctx.globalAlpha = .22;
+        ctx.fillStyle = '#4735ff';
+        ctx.beginPath(); ctx.arc(event.x, event.y, event.pullR * .5, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.save();
+        ctx.translate(event.x, event.y);
+        ctx.rotate(t / 760);
+        ctx.shadowBlur = 36; ctx.shadowColor = '#7b5cff';
+        ctx.strokeStyle = '#7b5cff'; ctx.lineWidth = 14;
+        ctx.beginPath(); ctx.ellipse(0, 0, event.r * 1.45, event.r * .72, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#33d7ff'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.ellipse(0, 0, event.r * 1.18, event.r * .55, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#000000';
+        ctx.beginPath(); ctx.arc(0, 0, event.r, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else if (event.type === 'sunRadiation') {
+        ctx.globalAlpha = .2;
+        ctx.fillStyle = '#ffb000';
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+        const g = ctx.createRadialGradient(event.x, event.y, event.r * .2, event.x, event.y, event.r * 1.15);
+        g.addColorStop(0, '#fff2a3');
+        g.addColorStop(.42, '#ffb000');
+        g.addColorStop(1, 'rgba(255,90,0,0)');
+        ctx.fillStyle = g;
+        ctx.shadowBlur = 46; ctx.shadowColor = '#ffb000';
+        ctx.beginPath(); ctx.arc(event.x, event.y, event.r, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+    for (const env of environmentObjects) {
+      if (env.type === 'asteroid') {
+        ctx.save();
+        ctx.translate(env.x, env.y);
+        ctx.rotate(env.angle);
+        ctx.fillStyle = '#6b5848';
+        ctx.strokeStyle = '#c79a68';
+        ctx.shadowBlur = 12; ctx.shadowColor = '#c79a68';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let i = 0; i < 9; i++) {
+          const a = i * Math.PI * 2 / 9;
+          const rr = env.r * (env.points ? env.points[i] : 1);
+          const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = 'rgba(20,12,8,.35)';
+        ctx.beginPath(); ctx.arc(-env.r * .22, -env.r * .1, env.r * .18, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(env.r * .28, env.r * .24, env.r * .13, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else if (env.type === 'sunWave') {
+        const alpha = Math.max(0, env.life / env.max);
+        ctx.globalAlpha = alpha * .45;
+        ctx.strokeStyle = '#ffdf6b';
+        ctx.lineWidth = env.width;
+        ctx.shadowBlur = 24;
+        ctx.shadowColor = '#ffb000';
+        ctx.beginPath(); ctx.arc(env.x, env.y, env.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+      }
+    }
+    ctx.restore();
   }
 
   function spawnScarabGear(x, y) {
@@ -1791,6 +2158,15 @@
       ctx.shadowBlur = 16;
       ctx.shadowColor = ctx.strokeStyle;
       ctx.beginPath(); ctx.arc(0, 0, o.r + 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (o.radiationTimer > 0) {
+      ctx.globalAlpha = .42 + Math.sin(performance.now() / 55) * .12;
+      ctx.strokeStyle = '#ffdf6b';
+      ctx.lineWidth = 5;
+      ctx.shadowBlur = 22;
+      ctx.shadowColor = '#ffb000';
+      ctx.beginPath(); ctx.arc(0, 0, o.r + 9, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
     if (o.allied) {
@@ -2233,6 +2609,7 @@
       if (!o || o.hit) continue;
       if (isOnScreen(o, 0)) o.entered = true;
       o.laserTimer = Math.max(0, (o.laserTimer || 0) - dt);
+      o.radiationTimer = Math.max(0, (o.radiationTimer || 0) - dt);
       o.angle += sdt * (o.type === 'triangle' ? 2.4 : 1.1);
       if (o.gravityTimer > 0 && !ENVIRONMENT_IMMUNE_TYPES.has(o.type)) {
         o.gravityTimer = Math.max(0, o.gravityTimer - dt);
@@ -2241,7 +2618,8 @@
       }
       if (o.entered) applyHoming(o, dt);
       const debuffSpeed = o.slowDebuff > 0 ? .48 : 1;
-      const enemySpeedBoost = ENEMY_TYPES.has(o.type) ? difficultyFactor * (discoActive ? .32 : 1) * debuffSpeed : (discoActive ? .32 : 1);
+      const radiationBoost = o.radiationTimer > 0 ? 1.45 : 1;
+      const enemySpeedBoost = ENEMY_TYPES.has(o.type) ? difficultyFactor * (discoActive ? .32 : 1) * debuffSpeed * radiationBoost : (discoActive ? .32 : 1);
 
       if (o.type === 'triangle') {
         if (o.entered) {
@@ -2409,11 +2787,23 @@
           o.x += (ax - o.x) * Math.min(1, sdt * 7.5);
           o.y += (ay - o.y) * Math.min(1, sdt * 7.5);
           if (o.modeTimer <= 0) { o.mode = 'strike'; o.modeTimer = .72; playSfx('starDash'); }
-        } else {
+        } else if (o.mode === 'strike') {
           const dx = o.lockX - o.x, dy = o.lockY - o.y, d = Math.max(1, Math.hypot(dx, dy));
           o.x += (dx / d) * 900 * sdt;
           o.y += (dy / d) * 900 * sdt;
-          if (o.modeTimer <= 0 || d < 8) { o.mode = 'approach'; o.modeTimer = rand(1.4, 2.2); o.lockX = 0; o.lockY = 0; }
+          if (o.modeTimer <= 0 || d < 8) {
+            o.mode = 'exit';
+            o.modeTimer = 3.2;
+            const out = o.x < W * .5 ? -1 : 1;
+            o.vx = out * rand(180, 280);
+            o.vy = -rand(80, 170);
+            o.lockX = 0; o.lockY = 0;
+          }
+        } else if (o.mode === 'exit') {
+          o.x += o.vx * sdt;
+          o.y += o.vy * sdt;
+          o.vy -= 30 * sdt;
+          if (o.modeTimer <= 0) o.hit = true;
         }
       } else if (o.type === 'magnetBug') {
         o.x += (W * .5 - o.x) * sdt * .32 + o.vx * sdt;
@@ -2492,6 +2882,8 @@
         o.y += worldSpeed * sdt;
       }
     }
+
+    updateEnvironmentEvents(dt);
 
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .97; p.vy *= .97; p.life -= dt; }
     for (const ft of floatingTexts) { ft.y += ft.vy * dt; ft.life -= dt; }
@@ -2580,7 +2972,7 @@
         const l2 = Math.max(1, lx * lx + ly * ly);
         const t = clamp(((player.x - ax) * lx + (player.y - ay) * ly) / l2, 0, 1);
         const px = ax + lx * t, py = ay + ly * t;
-        const touchingString = Math.hypot(player.x - px, player.y - py) < player.r + 10;
+          const touchingString = Math.hypot(player.x - px, player.y - py) < player.r + 18 || Math.hypot(player.x - o.x, player.y - o.y) < player.r + o.r;
         if (touchingString && (!player.kiteStuck || player.kiteStuck === o.id)) {
           if (player.kiteStuck !== o.id) {
             player.kiteStuck = o.id;
@@ -2599,20 +2991,20 @@
           o.escapeMeter += moved;
           o.stuckTimer -= dt;
           o.abilityTimer -= dt;
-          player.vx *= .55; player.vy *= .55;
-          targetX += (px - targetX) * .14;
-          targetY += (py - targetY) * .14;
-          player.x += (px - player.x) * .08;
-          player.y += (py - player.y) * .08;
+          player.vx *= .34; player.vy *= .34;
+          targetX += (px - targetX) * .32;
+          targetY += (py - targetY) * .32;
+          player.x += (px - player.x) * .24;
+          player.y += (py - player.y) * .24;
           if (o.abilityTimer <= 0) {
             o.abilityTimer = .22;
-            addFloatingText(Math.max(0, Math.ceil((520 - o.escapeMeter) / 60)) + ' SHAKE', player.x, player.y - 30, '#ff8aa8', 12);
+            addFloatingText(Math.max(0, Math.ceil((760 - o.escapeMeter) / 80)) + ' SHAKE', player.x, player.y - 30, '#ff8aa8', 12);
           }
           if (o.stuckTimer <= 0) {
             o.stuckTimer = .5;
             damagePlayer('Snagged by a spiked kite string.');
           }
-          if (o.escapeMeter >= 520 || !o.entered || o.hit) {
+          if (o.escapeMeter >= 760 || !o.entered || o.hit) {
             player.kiteStuck = null;
             o.escapeMeter = 0;
             o.stuckTimer = 0;
@@ -2680,7 +3072,7 @@
             continue;
           }
           if (o.type === 'candle' && hitCandleTrap(o)) continue;
-          if (isStandActive('ram') && ramChargeTimer > 0 && ENEMY_TYPES.has(o.type) && o.type !== 'drum' && o.type !== 'candle') {
+          if (isStandActive('ram') && ramChargeTimer > 0 && ENEMY_TYPES.has(o.type) && o.type !== 'drum' && o.type !== 'candle' && o.type !== 'kite') {
             if (o.type === 'circle') {
               o.impactBomb = true;
               const dx = o.x - player.x, dy = o.y - player.y;
@@ -2702,7 +3094,7 @@
             explode(player.x, player.y, '#ff6a4a', 18);
             continue;
           }
-          if (isJackalShadowActive() && ENEMY_TYPES.has(o.type) && o.type !== 'drum' && o.type !== 'candle') {
+          if (isJackalShadowActive() && ENEMY_TYPES.has(o.type) && o.type !== 'drum' && o.type !== 'candle' && o.type !== 'kite') {
             if (o.type === 'circle') triggerExplosion(o);
             else killEnemy(o, '#b38cff', 90);
             explode(player.x, player.y, '#b38cff', 18);
@@ -2727,7 +3119,7 @@
             if (player.hearts <= 0) endGame('Hit by the sad mask.');
           }
           if (o.type === 'circle') triggerExplosion(o);
-          else if (o.type !== 'pentagon' && o.type !== 'skull' && o.type !== 'star' && o.type !== 'mask' && o.type !== 'drum' && o.type !== 'candle') killEnemy(o, '#ff477e');
+          else if (o.type !== 'pentagon' && o.type !== 'skull' && o.type !== 'star' && o.type !== 'mask' && o.type !== 'drum' && o.type !== 'candle' && o.type !== 'kite') killEnemy(o, '#ff477e');
         }
       }
     }
@@ -3080,6 +3472,7 @@
     const oy = shake ? rand(-shake, shake) : 0;
     ctx.save(); ctx.translate(ox, oy);
     drawBackground(performance.now());
+    drawEnvironmentEvents();
     drawClockOverlay();
     drawScreenPulses();
     for (const o of objects) drawObject(o);
