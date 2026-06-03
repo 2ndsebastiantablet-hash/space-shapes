@@ -115,7 +115,7 @@
   const standMenuClose = document.getElementById('standMenuClose');
 
   let W = 0, H = 0, dpr = 1;
-  let player, objects, particles, bullets, floatingTexts;
+  let player, objects, particles, bullets, floatingTexts, screenPulses;
   let score, combo, best, running, paused, worldSpeed, spawnTimer, bulletTimer, shake, chainTimer, slowTimer, runTime, invincibleTimer;
   let discoCharge, discoActive, discoTimer, discoCooldownTimer, discoExtraLifeUsed;
   let clockFastTimer, batSlowTimer;
@@ -136,7 +136,7 @@
   const SAFE_TOUCH_TYPES = new Set(['cube', 'crescent', 'heart']);
   const HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
   const OUTLINE_HELPER_TYPES = new Set(['cube', 'crescent', 'heart']);
-  const ENVIRONMENT_IMMUNE_TYPES = new Set(['crescent', 'drum']);
+  const ENVIRONMENT_IMMUNE_TYPES = new Set(['crescent', 'drum', 'candle']);
   const ENEMY_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull', 'diamond', 'clown', 'clock', 'mask', 'bubbleEye', 'kite', 'drum', 'bat', 'candle', 'magnetBug', 'pinwheel']);
   const PROJECTILE_TYPES = new Set(['clownBalloon', 'enemyShot']);
   const DEADLY_TOUCH_TYPES = new Set(['triangle', 'circle', 'pentagon', 'hexagon', 'star', 'skull', 'clown', 'clock', 'mask', 'bubbleEye', 'kite', 'drum', 'bat', 'candle', 'magnetBug', 'pinwheel', 'clownBalloon', 'enemyShot']);
@@ -582,13 +582,14 @@
 
   function reset() {
     debugBox.style.display = 'none';
-    player = { x: W / 2, y: H * .72, r: 21, vx: 0, vy: 0, hearts: 3, healProgress: 0, kiteStuck: null };
+    player = { x: W / 2, y: H * .72, r: 21, vx: 0, vy: 0, hearts: 3, healProgress: 0, kiteStuck: null, gravityTimer: 0, gravityX: 0, gravityY: 0 };
     targetX = player.x;
     targetY = player.y;
     objects = [];
     particles = [];
     bullets = [];
     floatingTexts = [];
+    screenPulses = [];
     standProgress = createStandProgress();
     standUiKey = null;
     standOfferKey = null;
@@ -805,6 +806,11 @@
       escapeMeter: 0,
       lastTargetX: 0,
       lastTargetY: 0,
+      gravityTimer: 0,
+      gravityX: 0,
+      gravityY: 0,
+      lockX: 0,
+      lockY: 0,
       allied: false,
       targetY: null
     };
@@ -820,13 +826,13 @@
     if (type === 'clown') { obj.r = Math.max(24, r); obj.vx = rand(-70, 70); obj.vy = rand(45, 75); obj.abilityTimer = rand(1.2, 2.2); obj.timer = rand(2.2, 3.2); obj.modeTimer = 0; obj.maxHp += 4; obj.hp = obj.maxHp; }
     if (type === 'clock') { obj.r = Math.max(24, r); obj.vx = rand(-25, 25); obj.vy = rand(45, 70); obj.abilityTimer = rand(1.5, 2.4); obj.maxHp += 7; obj.hp = obj.maxHp; }
     if (type === 'mask') { obj.r = Math.max(23, r); obj.vx = rand(-45, 45); obj.vy = rand(30, 52); obj.mode = 'happy'; obj.modeTimer = 2.2; obj.abilityTimer = 1.2; obj.timer = rand(18, 28); obj.maxHp += 4; obj.hp = obj.maxHp; }
-    if (type === 'bubbleEye') { obj.r = Math.max(30, r); obj.vx = rand(-115, 115); obj.vy = rand(45, 110); obj.mode = 'closed'; obj.modeTimer = 1.4; obj.abilityTimer = 1.1; obj.maxHp += 1; obj.hp = obj.maxHp; }
+    if (type === 'bubbleEye') { obj.r = Math.max(30, r); obj.vx = rand(-115, 115); obj.vy = rand(45, 110); obj.mode = 'closed'; obj.modeTimer = 1.4; obj.abilityTimer = 1.1; obj.maxHp += 7; obj.hp = obj.maxHp; }
     if (type === 'kite') { obj.r = Math.max(22, r); obj.vx = rand(-95, 95); obj.vy = rand(70, 105); obj.lastTargetX = targetX; obj.lastTargetY = targetY; }
     if (type === 'drum') { obj.r = Math.max(23, r); obj.vx = 0; obj.vy = rand(22, 36); obj.abilityTimer = rand(1.4, 2.5); }
-    if (type === 'bat') { obj.r = Math.max(18, r); obj.vx = rand(-140, 140); obj.vy = rand(65, 120); obj.mode = 'zigzag'; obj.abilityTimer = rand(1.4, 2.6); }
-    if (type === 'candle') { obj.r = Math.max(18, r); obj.vx = rand(-70, 70); obj.vy = rand(45, 80); obj.mode = 'approach'; obj.modeTimer = rand(2.5, 4); }
+    if (type === 'bat') { obj.r = Math.max(18, r); obj.vx = rand(-140, 140); obj.vy = rand(65, 120); obj.mode = 'zigzag'; obj.abilityTimer = rand(1.4, 2.6); obj.maxHp += 4; obj.hp = obj.maxHp; }
+    if (type === 'candle') { obj.r = Math.max(18, r); obj.vx = rand(-70, 70); obj.vy = rand(45, 80); obj.mode = 'approach'; obj.modeTimer = rand(2.5, 4); obj.maxHp = 999; obj.hp = 999; }
     if (type === 'magnetBug') { obj.r = Math.max(22, r); obj.vx = rand(-35, 35); obj.vy = rand(35, 65); obj.maxHp += 1; obj.hp = obj.maxHp; }
-    if (type === 'pinwheel') { obj.r = Math.max(24, r); obj.vx = rand(-220, 220) || 180; obj.vy = rand(130, 210); obj.maxHp += 5; obj.hp = obj.maxHp; }
+    if (type === 'pinwheel') { obj.r = Math.max(24, r); obj.vx = rand(-220, 220) || 180; obj.vy = rand(130, 210); obj.abilityTimer = rand(.8, 1.5); obj.maxHp += 14; obj.hp = obj.maxHp; }
     if (type === 'clownBalloon') { obj.r = Math.max(9, r); obj.vy = rand(-160, 160); obj.maxHp = 1; obj.hp = 1; obj.entered = true; }
     if (type === 'enemyShot') { obj.r = Math.max(7, r); obj.maxHp = 1; obj.hp = 1; obj.entered = true; }
     return obj;
@@ -1041,7 +1047,7 @@
 
   function damageEnemy(o, amount = 1, color = '#ffe680') {
     if (!o || o.hit || HELPER_TYPES.has(o.type) || !ENEMY_TYPES.has(o.type)) return;
-    if (o.type === 'drum') return;
+    if (o.type === 'drum' || o.type === 'candle') return;
     playSfx('enemyHit');
     if (o.type === 'star') {
       explode(o.x, o.y, '#fff27a', 5);
@@ -1138,6 +1144,23 @@
     showEvent('TIME SLOW');
   }
 
+  function collectHeart(o) {
+    if (!o || o.hit) return;
+    o.hit = true;
+    if (player.hearts < MAX_HEARTS) {
+      player.hearts += 1;
+      player.healProgress = 0;
+      playSfx('heartGain');
+      showEvent('+1 HEART');
+      explode(player.x, player.y, '#ff6fb1', 34);
+      updateHearts();
+    } else {
+      playSfx('heartPulse');
+      addFloatingText('FULL', o.x, o.y - 24, '#ffb6dc', 16);
+      explode(o.x, o.y, '#ff6fb1', 18);
+    }
+  }
+
   function spawnClownBalloons(o) {
     if (!o || o.hit) return;
     const count = Math.floor(rand(6, 9));
@@ -1159,8 +1182,8 @@
       const child = makeObject('bubbleEye', o.x + rand(-24, 24), o.y + rand(-24, 24), Math.max(12, o.r * .42));
       child.r = Math.max(12, o.r * .42);
       child.parentSplit = true;
-      child.maxHp = 1;
-      child.hp = 1;
+      child.maxHp = Math.max(7, 4 + Math.floor(getMinuteLevel() * .85));
+      child.hp = child.maxHp;
       child.vx = rand(-190, 190);
       child.vy = rand(-160, 160);
       child.entered = true;
@@ -1168,6 +1191,36 @@
     }
     playSfx('hexSplit');
     showEvent('BUBBLE SPLIT!');
+  }
+
+  function applyRandomGravity(target) {
+    if (target.gravityTimer > 0 && Math.random() < .45) {
+      target.gravityTimer = 0;
+      target.gravityX = 0;
+      target.gravityY = 0;
+      return;
+    }
+    const angle = rand(0, Math.PI * 2);
+    const force = rand(520, 980);
+    target.gravityTimer = rand(.65, 1.15);
+    target.gravityX = Math.cos(angle) * force;
+    target.gravityY = Math.sin(angle) * force;
+  }
+
+  function triggerPinwheelShift(o) {
+    if (!o || o.hit) return;
+    screenPulses.push({ x: o.x, y: o.y, r: 0, life: .8, max: .8, color: `hsl(${(performance.now() / 8) % 360},100%,68%)` });
+    playSfx('pentagonPulse');
+    if (Math.random() < .55) applyRandomGravity(player);
+    for (const other of objects) {
+      if (!other || other.hit || other === o || ENVIRONMENT_IMMUNE_TYPES.has(other.type)) continue;
+      if (Math.random() < .42) applyRandomGravity(other);
+    }
+    for (const b of bullets) {
+      if (!b || b.dead) continue;
+      if (Math.random() < .5) applyRandomGravity(b);
+    }
+    showEvent('GRAVITY SHIFT');
   }
 
   function burstMagnetBullets(o) {
@@ -1209,12 +1262,10 @@
   function hitCandleTrap(o) {
     if (!o || o.type !== 'candle') return false;
     if (o.mode === 'strike') {
-      damagePlayer('Caught by the candle circle.');
-      if (player.hearts > 0 && !discoActive) {
-        player.hearts = 0;
-        updateHearts();
-        endGame('Caught by the candle circle.');
-      }
+      player.hearts = 0;
+      updateHearts();
+      explode(player.x, player.y, '#ff2a2a', 56);
+      endGame('Caught by the candle strike.');
       return true;
     }
     return false;
@@ -1232,7 +1283,7 @@
   }
 
   function candleShieldActive() {
-    return objects && objects.some(o => o && !o.hit && o.type === 'candle' && (o.mode === 'orbit' || o.mode === 'retreat'));
+    return objects && objects.some(o => o && !o.hit && o.type === 'candle' && o.mode === 'guard');
   }
 
   function triggerExplosion(source) {
@@ -1706,9 +1757,11 @@
     } else if (o.type === 'drum') {
       ctx.fillStyle = '#5b2430'; ctx.strokeStyle = '#ffdf6b'; ctx.shadowBlur = 18; ctx.shadowColor = '#ffdf6b'; ctx.fillRect(-o.r, -o.r * .7, o.r * 2, o.r * 1.4); ctx.strokeRect(-o.r, -o.r * .7, o.r * 2, o.r * 1.4); ctx.beginPath(); ctx.ellipse(0, -o.r * .7, o.r, o.r * .35, 0, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.ellipse(0, o.r * .7, o.r, o.r * .35, 0, 0, Math.PI * 2); ctx.stroke();
     } else if (o.type === 'bat') {
-      ctx.fillStyle = '#151018'; ctx.strokeStyle = '#9bff70'; ctx.shadowBlur = 16; ctx.shadowColor = '#9bff70'; ctx.beginPath(); ctx.arc(0, 0, o.r * .55, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-o.r * .45, 0); ctx.quadraticCurveTo(-o.r * 1.8, -o.r, -o.r * 2.2, o.r * .45); ctx.quadraticCurveTo(-o.r, o.r * .25, -o.r * .45, 0); ctx.fill(); ctx.beginPath(); ctx.moveTo(o.r * .45, 0); ctx.quadraticCurveTo(o.r * 1.8, -o.r, o.r * 2.2, o.r * .45); ctx.quadraticCurveTo(o.r, o.r * .25, o.r * .45, 0); ctx.fill();
+      const attacking = o.mode === 'pause' || o.mode === 'dive';
+      ctx.fillStyle = attacking ? '#ff1f3d' : '#151018'; ctx.strokeStyle = attacking ? '#ffffff' : '#9bff70'; ctx.shadowBlur = attacking ? 28 : 16; ctx.shadowColor = attacking ? '#ff1f3d' : '#9bff70'; ctx.beginPath(); ctx.arc(0, 0, o.r * .55, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-o.r * .45, 0); ctx.quadraticCurveTo(-o.r * 1.8, -o.r, -o.r * 2.2, o.r * .45); ctx.quadraticCurveTo(-o.r, o.r * .25, -o.r * .45, 0); ctx.fill(); ctx.beginPath(); ctx.moveTo(o.r * .45, 0); ctx.quadraticCurveTo(o.r * 1.8, -o.r, o.r * 2.2, o.r * .45); ctx.quadraticCurveTo(o.r, o.r * .25, o.r * .45, 0); ctx.fill();
     } else if (o.type === 'candle') {
-      ctx.fillStyle = '#f8e7c8'; ctx.strokeStyle = '#ff477e'; ctx.shadowBlur = 20; ctx.shadowColor = o.mode === 'strike' ? '#ff2a2a' : '#ffdf6b'; ctx.fillRect(-o.r * .38, -o.r * .2, o.r * .76, o.r * 1.25); ctx.strokeRect(-o.r * .38, -o.r * .2, o.r * .76, o.r * 1.25); ctx.fillStyle = o.mode === 'strike' ? '#ff2a2a' : '#ffdf6b'; ctx.beginPath(); ctx.moveTo(0, -o.r * 1.2); ctx.quadraticCurveTo(o.r * .65, -o.r * .35, 0, -o.r * .15); ctx.quadraticCurveTo(-o.r * .55, -o.r * .45, 0, -o.r * 1.2); ctx.fill(); ctx.globalAlpha = .35; ctx.beginPath(); ctx.ellipse(-o.r, 0, o.r * .5, o.r, -.5, 0, Math.PI * 2); ctx.ellipse(o.r, 0, o.r * .5, o.r, .5, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      const hot = o.mode === 'anticipate' || o.mode === 'strike';
+      ctx.fillStyle = '#f8e7c8'; ctx.strokeStyle = hot ? '#ffffff' : '#ff477e'; ctx.shadowBlur = hot ? 30 : 20; ctx.shadowColor = o.mode === 'strike' ? '#ff2a2a' : '#ffdf6b'; ctx.fillRect(-o.r * .38, -o.r * .2, o.r * .76, o.r * 1.25); ctx.strokeRect(-o.r * .38, -o.r * .2, o.r * .76, o.r * 1.25); ctx.fillStyle = o.mode === 'strike' ? '#ff2a2a' : hot ? '#ffffff' : '#ffdf6b'; ctx.beginPath(); ctx.moveTo(0, -o.r * 1.2); ctx.quadraticCurveTo(o.r * .65, -o.r * .35, 0, -o.r * .15); ctx.quadraticCurveTo(-o.r * .55, -o.r * .45, 0, -o.r * 1.2); ctx.fill(); ctx.globalAlpha = o.mode === 'guard' ? .55 : .28; ctx.beginPath(); ctx.ellipse(-o.r, 0, o.r * .5, o.r, -.5, 0, Math.PI * 2); ctx.ellipse(o.r, 0, o.r * .5, o.r, .5, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
     } else if (o.type === 'magnetBug') {
       ctx.fillStyle = '#221022'; ctx.strokeStyle = '#a6ff6e'; ctx.shadowBlur = 18; ctx.shadowColor = '#a6ff6e'; ctx.beginPath(); ctx.ellipse(0, 0, o.r * 1.05, o.r * .78, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-o.r * .5, -o.r * .55); ctx.lineTo(-o.r * .9, -o.r * 1.15); ctx.moveTo(o.r * .5, -o.r * .55); ctx.lineTo(o.r * .9, -o.r * 1.15); ctx.stroke(); ctx.fillStyle = '#a6ff6e'; ctx.font = '900 12px Arial'; ctx.textAlign = 'center'; ctx.fillText(o.eatenBullets || 0, 0, 4);
     } else if (o.type === 'pinwheel') {
@@ -2082,6 +2135,11 @@
     invincibleTimer = Math.max(0, invincibleTimer - dt);
     const sdt = dt * timeScale;
     runTime += dt;
+    if (player.gravityTimer > 0) {
+      player.gravityTimer = Math.max(0, player.gravityTimer - dt);
+      player.vx += player.gravityX * dt;
+      player.vy += player.gravityY * dt;
+    }
 
     const difficultyFactor = getDifficultyFactor();
     worldSpeed = 55 + difficulty * 2.2;
@@ -2149,7 +2207,14 @@
 
     if (bulletTimer <= 0) { firePlayerBullet(); bulletTimer = discoActive ? .1 : .18; }
     updateBulletHoming(dt);
-    for (const b of bullets) { b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt; }
+    for (const b of bullets) {
+      if (b.gravityTimer > 0) {
+        b.gravityTimer = Math.max(0, b.gravityTimer - dt);
+        b.vx += b.gravityX * dt;
+        b.vy += b.gravityY * dt;
+      }
+      b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    }
 
     if (spawnTimer <= 0 || objects.length === 0) {
       const spawnCount = minute >= 5 ? 3 : minute >= 3 ? 2 : 1;
@@ -2169,6 +2234,11 @@
       if (isOnScreen(o, 0)) o.entered = true;
       o.laserTimer = Math.max(0, (o.laserTimer || 0) - dt);
       o.angle += sdt * (o.type === 'triangle' ? 2.4 : 1.1);
+      if (o.gravityTimer > 0 && !ENVIRONMENT_IMMUNE_TYPES.has(o.type)) {
+        o.gravityTimer = Math.max(0, o.gravityTimer - dt);
+        o.vx += o.gravityX * dt;
+        o.vy += o.gravityY * dt;
+      }
       if (o.entered) applyHoming(o, dt);
       const debuffSpeed = o.slowDebuff > 0 ? .48 : 1;
       const enemySpeedBoost = ENEMY_TYPES.has(o.type) ? difficultyFactor * (discoActive ? .32 : 1) * debuffSpeed : (discoActive ? .32 : 1);
@@ -2284,7 +2354,7 @@
           if (o.modeTimer <= 0) {
             o.mode = 'dive'; o.modeTimer = .48;
             const dx = player.x - o.x, dy = player.y - o.y, d = Math.max(1, Math.hypot(dx, dy));
-            o.vx = dx / d * 720; o.vy = dy / d * 720;
+            o.vx = dx / d * 1280; o.vy = dy / d * 1280;
             playSfx('starDash');
           }
         } else if (o.mode === 'dive') {
@@ -2299,39 +2369,71 @@
       } else if (o.type === 'candle') {
         o.modeTimer -= sdt;
         const candleCount = objects.filter(c => c && !c.hit && c.type === 'candle').length;
+        o.vx = 0; o.vy = 0;
         if (o.mode === 'approach') {
           const dx = player.x - o.x, dy = player.y - o.y, d = Math.max(1, Math.hypot(dx, dy));
-          o.vx += (dx / d) * 240 * sdt; o.vy += (dy / d) * 240 * sdt;
-          o.x += o.vx * sdt; o.y += o.vy * sdt; o.vx *= .985; o.vy *= .985;
-          if (d < 150) { o.mode = 'orbit'; o.modeTimer = rand(2.4, 3.5); o.orbitAngle = rand(0, Math.PI * 2); }
-        } else if (o.mode === 'orbit') {
-          if (candleCount < 5 && o.modeTimer < 1.7 && Math.random() < .015 && objects.length < MAX_OBJECTS - 1) {
-            const c = makeObject('candle', rand(35, W - 35), -40, 18); objects.push(c);
+          o.x += (dx / d) * 250 * sdt;
+          o.y += (dy / d) * 250 * sdt;
+          if (d < 110) { o.mode = 'guard'; o.modeTimer = rand(.55, .95); o.orbitAngle = (candleCount - 1) * Math.PI * 2 / 6; }
+        } else if (o.mode === 'guard') {
+          if (candleCount < 6 && o.modeTimer <= 0 && Math.random() < .08 && objects.length < MAX_OBJECTS - 1) {
+            const c = makeObject('candle', rand(35, W - 35), -40, 18);
+            c.orbitAngle = candleCount * Math.PI * 2 / 6;
+            objects.push(c);
+            o.modeTimer = .55;
           }
-          o.orbitAngle += sdt * (1.8 + candleCount * .12);
-          const radius = 120 + candleCount * 8;
-          o.x += (player.x + Math.cos(o.orbitAngle) * radius - o.x) * Math.min(1, sdt * 3.2);
-          o.y += (player.y + Math.sin(o.orbitAngle) * radius - o.y) * Math.min(1, sdt * 3.2);
-          if (candleCount >= 4 && o.modeTimer <= 0) { o.mode = 'retreat'; o.modeTimer = .75; playSfx('starWarn'); }
-        } else if (o.mode === 'retreat') {
-          const dx = o.x - player.x, dy = o.y - player.y, d = Math.max(1, Math.hypot(dx, dy));
-          o.x += (dx / d) * 260 * sdt; o.y += (dy / d) * 260 * sdt;
-          if (o.modeTimer <= 0) { o.mode = 'strike'; o.modeTimer = .85; playSfx('starDash'); }
+          const candles = objects.filter(c => c && !c.hit && c.type === 'candle');
+          const idx = Math.max(0, candles.findIndex(c => c === o));
+          o.orbitAngle = idx * Math.PI * 2 / Math.max(6, candles.length);
+          const radius = 88;
+          const gx = player.x + Math.cos(o.orbitAngle) * radius;
+          const gy = player.y + Math.sin(o.orbitAngle) * radius;
+          o.x += (gx - o.x) * Math.min(1, sdt * 5.2);
+          o.y += (gy - o.y) * Math.min(1, sdt * 5.2);
+          const ready = candles.length >= 6 && !candles.some(c => c.mode === 'anticipate' || c.mode === 'strike');
+          if (ready && candles.every(c => c.mode === 'guard') && Math.min(...candles.map(c => c.modeTimer)) <= 0) {
+            for (const c of candles) {
+              c.mode = 'anticipate';
+              c.modeTimer = .6;
+              c.lockX = player.x;
+              c.lockY = player.y;
+              c.orbitAngle = candles.indexOf(c) * Math.PI * 2 / candles.length;
+            }
+            playSfx('starWarn');
+            showEvent('CANDLE STRIKE!');
+          }
+        } else if (o.mode === 'anticipate') {
+          const radius = 145;
+          const ax = o.lockX + Math.cos(o.orbitAngle) * radius;
+          const ay = o.lockY + Math.sin(o.orbitAngle) * radius;
+          o.x += (ax - o.x) * Math.min(1, sdt * 7.5);
+          o.y += (ay - o.y) * Math.min(1, sdt * 7.5);
+          if (o.modeTimer <= 0) { o.mode = 'strike'; o.modeTimer = .72; playSfx('starDash'); }
         } else {
-          const dx = player.x - o.x, dy = player.y - o.y, d = Math.max(1, Math.hypot(dx, dy));
-          o.vx = dx / d * 650; o.vy = dy / d * 650; o.x += o.vx * sdt; o.y += o.vy * sdt;
-          if (o.modeTimer <= 0) { o.mode = 'approach'; o.modeTimer = rand(2, 3); }
+          const dx = o.lockX - o.x, dy = o.lockY - o.y, d = Math.max(1, Math.hypot(dx, dy));
+          o.x += (dx / d) * 900 * sdt;
+          o.y += (dy / d) * 900 * sdt;
+          if (o.modeTimer <= 0 || d < 8) { o.mode = 'approach'; o.modeTimer = rand(1.4, 2.2); o.lockX = 0; o.lockY = 0; }
         }
       } else if (o.type === 'magnetBug') {
         o.x += (W * .5 - o.x) * sdt * .32 + o.vx * sdt;
         o.y += (H * .38 - o.y) * sdt * .18 + o.vy * sdt;
+        const pullRadius = 430 + (o.eatenBullets || 0) * 10;
+        const pdx = o.x - player.x, pdy = o.y - player.y, pd = Math.max(1, Math.hypot(pdx, pdy));
+        if (pd < pullRadius) { player.vx += (pdx / pd) * 1450 * sdt; player.vy += (pdy / pd) * 1450 * sdt; }
         for (const b of bullets) {
           if (!b || b.dead) continue;
           const dx = o.x - b.x, dy = o.y - b.y, d = Math.max(1, Math.hypot(dx, dy));
-          if (d < 190 + o.eatenBullets * 5) { b.vx += (dx / d) * 780 * sdt; b.vy += (dy / d) * 780 * sdt; }
+          if (d < pullRadius) { b.vx += (dx / d) * 2100 * sdt; b.vy += (dy / d) * 2100 * sdt; }
           if (d < o.r + b.r + 8) { b.dead = true; o.eatenBullets += 1; o.r = Math.min(48, o.r + 1.3); playSfx('cubeBump'); }
         }
+        for (const other of objects) {
+          if (!other || other.hit || other === o || ENVIRONMENT_IMMUNE_TYPES.has(other.type)) continue;
+          const dx = o.x - other.x, dy = o.y - other.y, d = Math.max(1, Math.hypot(dx, dy));
+          if (d < pullRadius) { other.vx += (dx / d) * 1250 * sdt; other.vy += (dy / d) * 1250 * sdt; }
+        }
       } else if (o.type === 'pinwheel') {
+        o.abilityTimer -= sdt;
         o.angle += sdt * 9;
         o.x += o.vx * sdt; o.y += o.vy * sdt;
         if (o.x < o.r) { o.x = o.r; o.vx = Math.abs(o.vx); }
@@ -2353,6 +2455,7 @@
           const dx = other.x - o.x, dy = other.y - o.y, d = Math.max(1, Math.hypot(dx, dy));
           if (d < radius) { other.vx += (-dy / d) * 260 * sdt; other.vy += (dx / d) * 260 * sdt; }
         }
+        if (o.abilityTimer <= 0 && o.entered) { o.abilityTimer = rand(1.1, 2.0); triggerPinwheelShift(o); }
       } else if (PROJECTILE_TYPES.has(o.type)) {
         o.x += o.vx * sdt; o.y += o.vy * sdt;
       } else if (o.type === 'star') {
@@ -2392,6 +2495,7 @@
 
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .97; p.vy *= .97; p.life -= dt; }
     for (const ft of floatingTexts) { ft.y += ft.vy * dt; ft.life -= dt; }
+    for (const pulse of screenPulses) { pulse.r += Math.max(W, H) * dt * 1.65; pulse.life -= dt; }
     for (const tr of playerTrail) tr.life -= dt;
     playerTrail = playerTrail.filter(tr => tr.life > 0).slice(-18);
 
@@ -2465,28 +2569,7 @@
         }
       }
       if (o.type === 'heart') {
-        const pulseRadius = 88 + Math.sin(performance.now() / 180) * 14;
-        const d = Math.hypot(player.x - o.x, player.y - o.y);
-        if (d < pulseRadius && player.hearts < MAX_HEARTS) {
-          heartHealingThisFrame = true;
-          o.healPulseTimer -= dt;
-          if (o.healPulseTimer <= 0) {
-            o.healPulseTimer = 1;
-            player.healProgress += 1;
-            explode(o.x, o.y, '#ff6fb1', 12);
-            const now = performance.now();
-            if (now - lastHealTickTime > 180) { playSfx('heartPulse'); lastHealTickTime = now; }
-            showEvent('HEAL PULSE');
-            if (player.healProgress >= 4) {
-              player.hearts += 1;
-              player.healProgress = 0;
-              playSfx('heartGain');
-              showEvent('+1 HEART');
-              explode(player.x, player.y, '#ff6fb1', 30);
-            }
-            updateHearts();
-          }
-        }
+        // Hearts are now touch pickups, not healing stations.
       }
       if (o.type === 'kite') {
         const tailX = o.x;
@@ -2538,7 +2621,7 @@
           }
         } else if (!touchingString) o.stuckTimer = 0;
       }
-      if (o.type === 'candle' && (o.mode === 'orbit' || o.mode === 'retreat')) {
+      if (o.type === 'candle' && o.mode === 'guard') {
         for (const other of objects) {
           if (!other || other.hit || other === o || !ENEMY_TYPES.has(other.type) || other.type === 'candle') continue;
           const dx = other.x - player.x, dy = other.y - player.y;
@@ -2564,7 +2647,9 @@
         if (o.type === 'standPiece') {
           collectStandPiece(o);
         } else if (SAFE_TOUCH_TYPES.has(o.type)) {
-          if (o.type === 'cube' || o.type === 'heart') {
+          if (o.type === 'heart') {
+            collectHeart(o);
+          } else if (o.type === 'cube') {
             const dx = o.x - player.x, dy = o.y - player.y;
             const len = Math.max(1, Math.hypot(dx, dy));
             o.vx += (dx / len) * 430;
@@ -2572,7 +2657,7 @@
             player.vx -= (dx / len) * 40;
             player.vy -= (dy / len) * 40;
             playSfx('cubeBump');
-            explode(o.x, o.y, o.type === 'heart' ? '#ff6fb1' : '#00d7ff', 6);
+            explode(o.x, o.y, '#00d7ff', 6);
           } else if (o.type === 'crescent') activateCrescent(o);
         } else if (o.entered && DEADLY_TOUCH_TYPES.has(o.type)) {
           if (PROJECTILE_TYPES.has(o.type)) {
@@ -2595,7 +2680,7 @@
             continue;
           }
           if (o.type === 'candle' && hitCandleTrap(o)) continue;
-          if (isStandActive('ram') && ramChargeTimer > 0 && ENEMY_TYPES.has(o.type) && o.type !== 'drum') {
+          if (isStandActive('ram') && ramChargeTimer > 0 && ENEMY_TYPES.has(o.type) && o.type !== 'drum' && o.type !== 'candle') {
             if (o.type === 'circle') {
               o.impactBomb = true;
               const dx = o.x - player.x, dy = o.y - player.y;
@@ -2617,13 +2702,23 @@
             explode(player.x, player.y, '#ff6a4a', 18);
             continue;
           }
-          if (isJackalShadowActive() && ENEMY_TYPES.has(o.type) && o.type !== 'drum') {
+          if (isJackalShadowActive() && ENEMY_TYPES.has(o.type) && o.type !== 'drum' && o.type !== 'candle') {
             if (o.type === 'circle') triggerExplosion(o);
             else killEnemy(o, '#b38cff', 90);
             explode(player.x, player.y, '#b38cff', 18);
             continue;
           }
           const reasons = { triangle: 'Destroyed by triangle enemy.', circle: 'Destroyed by bomb circle.', pentagon: 'Crushed by pentagon gravity trap.', hexagon: 'Destroyed by hexagon enemy.', star: 'Destroyed by dashing star.', skull: 'Destroyed by skull curse.', clown: 'Caught by the clown face.', clock: 'Slammed by the clock hand.', mask: 'Hit by the theater mask.', bubbleEye: 'Hit by the bubble eye.', kite: 'Cut by the kite.', drum: 'Hit by the drum.', bat: 'Bitten by the bat.', candle: 'Burned by the candle.', magnetBug: 'Hit by the magnet bug.', pinwheel: 'Hit by the pinwheel.' };
+          if (o.type === 'candle' && o.mode !== 'strike') {
+            const dx = player.x - o.x, dy = player.y - o.y;
+            const d = Math.max(1, Math.hypot(dx, dy));
+            player.x += (dx / d) * Math.max(3, o.r + player.r - d);
+            player.y += (dy / d) * Math.max(3, o.r + player.r - d);
+            player.vx += (dx / d) * 120;
+            player.vy += (dy / d) * 120;
+            showEvent('CANDLE WALL');
+            continue;
+          }
           damagePlayer(reasons[o.type] || 'Destroyed by enemy.');
           if (o.type === 'bat') batSlowTimer = Math.max(batSlowTimer, 2.4);
           if (o.type === 'mask' && o.mode === 'sad' && player.hearts > 0 && !discoActive) {
@@ -2632,7 +2727,7 @@
             if (player.hearts <= 0) endGame('Hit by the sad mask.');
           }
           if (o.type === 'circle') triggerExplosion(o);
-          else if (o.type !== 'pentagon' && o.type !== 'skull' && o.type !== 'star' && o.type !== 'mask' && o.type !== 'drum') killEnemy(o, '#ff477e');
+          else if (o.type !== 'pentagon' && o.type !== 'skull' && o.type !== 'star' && o.type !== 'mask' && o.type !== 'drum' && o.type !== 'candle') killEnemy(o, '#ff477e');
         }
       }
     }
@@ -2697,6 +2792,7 @@
     if (running && objects.length === 0 && spawnTimer > .25) spawnTimer = .05;
     bullets = bullets.filter(b => b && !b.dead && b.life > 0 && b.y > -30 && b.y < H + 30).slice(-MAX_BULLETS);
     particles = particles.filter(p => p && p.life > 0).slice(-MAX_PARTICLES);
+    screenPulses = screenPulses.filter(pulse => pulse && pulse.life > 0).slice(-10);
     floatingTexts = floatingTexts.filter(ft => ft && ft.life > 0).slice(-50);
     scoreEl.textContent = Math.floor(score);
     comboEl.textContent = 'COMBO ' + Math.max(1, Math.floor(combo)) + ' / MULTI x' + scoreMultiplier;
@@ -2870,6 +2966,57 @@
     ctx.restore();
   }
 
+  function drawClockOverlay() {
+    if (clockFastTimer <= 0 || discoActive) return;
+    const t = performance.now();
+    const cx = W / 2, cy = H / 2;
+    const r = Math.max(W, H) * .42;
+    ctx.save();
+    ctx.globalAlpha = clamp(clockFastTimer / 1.15, .12, .28);
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = 'rgba(255,255,255,.04)';
+    ctx.lineWidth = 8;
+    ctx.shadowBlur = 26;
+    ctx.shadowColor = '#ffffff';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r * .78, cy + Math.sin(a) * r * .78);
+      ctx.lineTo(cx + Math.cos(a) * r * .92, cy + Math.sin(a) * r * .92);
+      ctx.stroke();
+    }
+    const hand = t / 95;
+    ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(hand) * r * .66, cy + Math.sin(hand) * r * .66); ctx.stroke();
+    ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(hand * .42) * r * .44, cy + Math.sin(hand * .42) * r * .44); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawScreenPulses() {
+    ctx.save();
+    for (const pulse of screenPulses || []) {
+      const alpha = Math.max(0, pulse.life / pulse.max);
+      ctx.globalAlpha = alpha * .38;
+      ctx.strokeStyle = pulse.color;
+      ctx.lineWidth = 7;
+      ctx.shadowBlur = 22;
+      ctx.shadowColor = pulse.color;
+      ctx.beginPath();
+      ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = alpha * .14;
+      ctx.fillStyle = pulse.color;
+      ctx.beginPath();
+      ctx.arc(pulse.x, pulse.y, pulse.r * .72, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawStandEffects() {
     ctx.save();
     for (const puddle of puddles || []) {
@@ -2933,6 +3080,8 @@
     const oy = shake ? rand(-shake, shake) : 0;
     ctx.save(); ctx.translate(ox, oy);
     drawBackground(performance.now());
+    drawClockOverlay();
+    drawScreenPulses();
     for (const o of objects) drawObject(o);
     drawStandEffects();
     drawBullets();
