@@ -76,7 +76,7 @@
     <h1>DROP//CHAIN</h1>
     <div class="subtitle">Survive with 3 hearts. Build combos to fill the Hyper Speed bar. When full, the arena becomes rainbow speed chaos.</div>
     <button onclick="startGame()">PLAY NOW</button>
-    <div class="hint">Computer: move your mouse. Phone: drag. Collect ancient animal fragments to awaken a 60-second Stand transformation.</div>
+    <div class="hint">Computer: WASD/arrow keys drift, hold Space for oxygen thrust, P/Escape pauses. Phone: drag for a weak push. Collect ancient animal fragments to awaken a 60-second Stand transformation.</div>
   </div>
 
   <div id="gameOverScreen">
@@ -126,12 +126,22 @@
   let scarabGears, windLanes, skyCutTimer, skyCuts, ramChargeMeter, ramChargeTimer, ramChargeDir, catClones, catCloneTimer, catDodgeCooldown, floodRings, puddles, hippoRingTimer, nextEffectId;
   let environmentTimer, nextEnvironmentId;
   let pointerDown = false, targetX = 0, targetY = 0, lastTime = 0, eventToken = 0, nextObjectId = 1;
+  let mobilePushX = 0, mobilePushY = 0;
+  const keys = Object.create(null);
 
   const MAX_OBJECTS = 125;
   const MAX_PARTICLES = 240;
   const MAX_BULLETS = 90;
   const MAX_HEARTS = 3;
   const DISCO_MAX = 100;
+  const OXYGEN_TANK_MAX = 100;
+  const BREATH_RESERVE_MAX = 100;
+  const OXYGEN_BREATH_DRAIN = 4;
+  const OXYGEN_PROPULSION_DRAIN = 28;
+  const BREATH_PROPULSION_DRAIN = 18;
+  const BREATH_EMPTY_TANK_DRAIN = 35;
+  const BREATH_RECOVERY = 18;
+  const OXYGEN_REFILL_DELAY = .45;
   const HEX_MAX_GENERATION = 4;
   const HEX_LIVE_SPLIT_CAP = 42;
   const SAFE_TOUCH_TYPES = new Set(['cube', 'crescent', 'heart']);
@@ -594,9 +604,21 @@
 
   function reset() {
     debugBox.style.display = 'none';
-    player = { x: W / 2, y: H * .72, r: 21, vx: 0, vy: 0, hearts: 3, healProgress: 0, kiteStuck: null, gravityTimer: 0, gravityX: 0, gravityY: 0, sparkHits: 0, sparkTimer: 0 };
+    player = {
+      x: W / 2, y: H * .72, r: 21, vx: 0, vy: 0,
+      hearts: 3, healProgress: 0, kiteStuck: null,
+      gravityTimer: 0, gravityX: 0, gravityY: 0,
+      sparkHits: 0, sparkTimer: 0,
+      oxygenTankMax: OXYGEN_TANK_MAX, oxygenTank: OXYGEN_TANK_MAX,
+      breathReserveMax: BREATH_RESERVE_MAX, breathReserve: BREATH_RESERVE_MAX,
+      oxygenRefillTimer: 0, propelling: false, lowOxygenPulse: 0,
+      facingAngle: -Math.PI / 2, breathPushTimer: 0, breathPushSign: 1
+    };
     targetX = player.x;
     targetY = player.y;
+    mobilePushX = 0;
+    mobilePushY = 0;
+    for (const key in keys) keys[key] = false;
     objects = [];
     particles = [];
     bullets = [];
@@ -773,6 +795,144 @@
     playSfx('scoreLoss');
     showEvent('-1 HEART');
     if (player.hearts <= 0) endGame(reason);
+  }
+
+  function getMovementInput() {
+    let x = 0, y = 0;
+    if (keys.KeyA || keys.ArrowLeft) x -= 1;
+    if (keys.KeyD || keys.ArrowRight) x += 1;
+    if (keys.KeyW || keys.ArrowUp) y -= 1;
+    if (keys.KeyS || keys.ArrowDown) y += 1;
+    x += mobilePushX;
+    y += mobilePushY;
+    const len = Math.hypot(x, y);
+    if (len > 1) { x /= len; y /= len; }
+    return { x, y, len: Math.min(1, len) };
+  }
+
+  function hasOxygenForPropulsion() {
+    return player && player.oxygenTank > 0 && player.oxygenRefillTimer <= 0;
+  }
+
+  function applyBreathingPush(dt, input) {
+    if (input.len <= .01) return;
+    player.breathPushTimer = Math.max(0, (player.breathPushTimer || 0) - dt);
+    if (player.breathPushTimer <= 0) {
+      player.breathPushSign = Math.random() < .5 ? -1 : 1;
+      player.breathPushTimer = rand(.12, .28);
+    }
+    let force = 140;
+    if (isStandActive('owl')) force *= 1.18;
+    if (isStandActive('jackal')) force *= 1.28;
+    if (isStandActive('ram')) force *= 1.12;
+    if (batSlowTimer > 0) force *= .45;
+    if (player.insidePentagonTrap) force *= .38;
+    player.vx += input.x * force * dt * player.breathPushSign;
+    player.vy += input.y * force * dt * player.breathPushSign;
+  }
+
+  function applyPropulsion(dt, input) {
+    let ix = input.x, iy = input.y;
+    if (input.len <= .01) {
+      ix = Math.cos(player.facingAngle || -Math.PI / 2);
+      iy = Math.sin(player.facingAngle || -Math.PI / 2);
+    }
+    let force = discoActive ? 760 : 520;
+    if (isStandActive('owl')) force *= 1.22;
+    if (isStandActive('jackal')) force *= 1.38;
+    if (isStandActive('ram')) force *= 1.12;
+    if (batSlowTimer > 0) force *= .55;
+    if (player.insidePentagonTrap) force *= .55;
+    player.vx += ix * force * dt;
+    player.vy += iy * force * dt;
+    player.facingAngle = Math.atan2(iy, ix);
+    if (Math.random() < dt * 24) {
+      const bx = player.x - ix * (player.r + rand(5, 14));
+      const by = player.y - iy * (player.r + rand(5, 14));
+      particles.push({ x: bx, y: by, vx: -ix * rand(65, 150) + rand(-30, 30), vy: -iy * rand(65, 150) + rand(-30, 30), r: rand(2, 5), life: .32, max: .32, color: Math.random() < .5 ? '#bff7ff' : '#6bd8ff' });
+    }
+  }
+
+  function updateOxygen(dt) {
+    if (!player) return;
+    const wantsPropulsion = !!keys.Space;
+    const canPropel = wantsPropulsion && hasOxygenForPropulsion();
+    player.propelling = canPropel;
+    if (player.oxygenRefillTimer > 0) {
+      player.oxygenRefillTimer = Math.max(0, player.oxygenRefillTimer - dt);
+      if (player.oxygenRefillTimer <= 0) {
+        player.oxygenTank = player.oxygenTankMax;
+        showEvent('OXYGEN REFILLED');
+        playSfx('resume');
+      }
+    }
+
+    if (player.oxygenRefillTimer <= 0) {
+      const tankDrain = canPropel ? OXYGEN_PROPULSION_DRAIN : OXYGEN_BREATH_DRAIN;
+      const hyperOxygenFactor = discoActive ? .35 : 1;
+      player.oxygenTank = Math.max(0, player.oxygenTank - tankDrain * hyperOxygenFactor * dt);
+      if (player.oxygenTank <= 0) {
+        player.oxygenTank = 0;
+        player.oxygenRefillTimer = OXYGEN_REFILL_DELAY;
+        player.propelling = false;
+        showEvent('TANK EMPTY');
+        playSfx('scoreLoss');
+      }
+    }
+
+    if (discoActive) {
+      player.breathReserve = Math.min(player.breathReserveMax, player.breathReserve + BREATH_RECOVERY * 1.6 * dt);
+    } else if (player.oxygenRefillTimer > 0 || player.oxygenTank <= 0) {
+      player.breathReserve = Math.max(0, player.breathReserve - BREATH_EMPTY_TANK_DRAIN * dt);
+    } else if (canPropel) {
+      player.breathReserve = Math.max(0, player.breathReserve - BREATH_PROPULSION_DRAIN * dt);
+    } else {
+      player.breathReserve = Math.min(player.breathReserveMax, player.breathReserve + BREATH_RECOVERY * dt);
+    }
+
+    const oxygenLow = player.oxygenTank < player.oxygenTankMax * .18 || player.breathReserve < player.breathReserveMax * .28;
+    player.lowOxygenPulse = oxygenLow ? (player.lowOxygenPulse || 0) + dt : 0;
+    if (!discoActive && player.breathReserve <= 0) killPlayerByOxygen();
+  }
+
+  function killPlayerByOxygen() {
+    if (!running || discoActive) return;
+    player.breathReserve = 0;
+    shake = 30;
+    explode(player.x, player.y, '#77e6ff', 58);
+    endGame('Ran out of oxygen.');
+  }
+
+  function updatePlayerMovement(dt) {
+    updateOxygen(dt);
+    if (!running) return;
+    const input = getMovementInput();
+    if (player.propelling) applyPropulsion(dt, input);
+    else applyBreathingPush(dt, input);
+
+    const speed = Math.hypot(player.vx, player.vy);
+    if (speed > 10 && input.len <= .01) player.facingAngle = Math.atan2(player.vy, player.vx);
+    const maxSpeed = discoActive ? 780 : isStandActive('jackal') ? 640 : 520;
+    if (speed > maxSpeed) {
+      player.vx = player.vx / speed * maxSpeed;
+      player.vy = player.vy / speed * maxSpeed;
+    }
+
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+    const drag = player.insidePentagonTrap ? .985 : (player.propelling ? .992 : .982);
+    const dragStep = Math.pow(drag, dt * 60);
+    player.vx *= dragStep;
+    player.vy *= dragStep;
+
+    const minX = player.r + 8, maxX = W - player.r - 8;
+    const minY = player.r + 60, maxY = H - player.r - 8;
+    if (player.x < minX) { player.x = minX; player.vx = Math.abs(player.vx) * .42; }
+    if (player.x > maxX) { player.x = maxX; player.vx = -Math.abs(player.vx) * .42; }
+    if (player.y < minY) { player.y = minY; player.vy = Math.abs(player.vy) * .42; }
+    if (player.y > maxY) { player.y = maxY; player.vy = -Math.abs(player.vy) * .42; }
+    targetX = player.x;
+    targetY = player.y;
   }
 
   function makeObject(type, x, y, r) {
@@ -2375,9 +2535,74 @@
     ctx.closePath();
   }
 
+  function drawPlayerOxygenGear(bob) {
+    const angle = player.facingAngle || -Math.PI / 2;
+    const sideX = Math.cos(angle + Math.PI / 2);
+    const sideY = Math.sin(angle + Math.PI / 2);
+    const backX = -Math.cos(angle);
+    const backY = -Math.sin(angle);
+    const tankX = player.x + backX * (player.r + 12) + sideX * 8;
+    const tankY = player.y + bob + backY * (player.r + 12) + sideY * 8;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#83e9ff';
+    ctx.translate(tankX, tankY);
+    ctx.rotate(angle);
+    ctx.fillStyle = player.propelling ? '#e9fbff' : '#58bfff';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(-8, -15, 16, 30, 7) : ctx.rect(-8, -15, 16, 30);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#18243a';
+    ctx.fillRect(-5, -18, 10, 5);
+    ctx.restore();
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = player.propelling ? 3 : 4;
+    ctx.strokeStyle = player.propelling ? 'rgba(135,245,255,.38)' : '#9be7ff';
+    ctx.shadowBlur = player.propelling ? 0 : 10;
+    ctx.shadowColor = '#9be7ff';
+    ctx.beginPath();
+    ctx.moveTo(tankX, tankY);
+    if (player.propelling) {
+      ctx.quadraticCurveTo(player.x + backX * 22, player.y + bob + backY * 22, player.x + backX * 32, player.y + bob + backY * 32);
+      ctx.stroke();
+      for (let i = 0; i < 3; i++) {
+        const spread = (i - 1) * .24;
+        const jetAngle = angle + Math.PI + spread;
+        const len = 28 + Math.sin(performance.now() / 80 + i) * 8;
+        ctx.strokeStyle = i === 1 ? 'rgba(225,255,255,.9)' : 'rgba(80,205,255,.62)';
+        ctx.lineWidth = i === 1 ? 5 : 3;
+        ctx.beginPath();
+        ctx.moveTo(tankX + Math.cos(jetAngle) * 9, tankY + Math.sin(jetAngle) * 9);
+        ctx.lineTo(tankX + Math.cos(jetAngle) * len, tankY + Math.sin(jetAngle) * len);
+        ctx.stroke();
+      }
+    } else {
+      ctx.quadraticCurveTo(player.x + sideX * 18, player.y + bob + sideY * 18, player.x, player.y + bob - player.r * .25);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = player.breathReserve < 32 && !discoActive ? 'rgba(255,80,110,.32)' : 'rgba(155,231,255,.24)';
+    ctx.strokeStyle = '#d9fbff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(player.x, player.y + bob - 2, player.r * .62, player.r * .48, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawPlayer() {
     ctx.save();
     const bob = Math.sin(performance.now() / 120) * 1.5;
+    drawPlayerOxygenGear(bob);
     ctx.globalAlpha = invincibleTimer > 0 && Math.floor(performance.now() / 90) % 2 === 0 ? .35 : 1;
     ctx.shadowBlur = 26; ctx.shadowColor = '#ffdf00';
     const g = ctx.createRadialGradient(player.x - 6, player.y - 8 + bob, 3, player.x, player.y + bob, player.r + 13);
@@ -2394,10 +2619,14 @@
     }
     ctx.shadowBlur = 0; ctx.lineWidth = 3; ctx.strokeStyle = '#ffffff'; ctx.stroke();
     ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.ellipse(player.x - 7, player.y - 6 + bob, 3.2, 5.2, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(player.x + 7, player.y - 6 + bob, 3.2, 5.2, 0, 0, Math.PI * 2); ctx.fill();
+    const panic = !discoActive && player.breathReserve < 30;
+    ctx.beginPath(); ctx.ellipse(player.x - 7, player.y - 6 + bob, panic ? 4.2 : 3.2, panic ? 6.4 : 5.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(player.x + 7, player.y - 6 + bob, panic ? 4.2 : 3.2, panic ? 6.4 : 5.2, 0, 0, Math.PI * 2); ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = '#111';
-    ctx.beginPath(); ctx.arc(player.x, player.y + 1 + bob, 10, 0.18 * Math.PI, 0.82 * Math.PI); ctx.stroke();
+    ctx.beginPath();
+    if (panic) ctx.arc(player.x, player.y + 11 + bob, 7, Math.PI, Math.PI * 2);
+    else ctx.arc(player.x, player.y + 1 + bob, 10, 0.18 * Math.PI, 0.82 * Math.PI);
+    ctx.stroke();
     if (activeStand) {
       const data = STANDS[activeStand.key];
       ctx.strokeStyle = isJackalShadowActive() ? '#c8c8d8' : data.color;
@@ -2996,11 +3225,7 @@
     shake = Math.max(0, shake - dt * 35);
     if (chainTimer <= 0) combo = 1;
 
-    let controlRateX = discoActive ? 36 : 10, controlRateY = discoActive ? 32 : 8, insidePentagonTrap = false;
-    if (isStandActive('owl')) { controlRateX *= 1.55; controlRateY *= 1.55; }
-    if (isStandActive('jackal')) { controlRateX *= 1.9; controlRateY *= 1.9; }
-    if (isStandActive('ram')) { controlRateX *= 1.18; controlRateY *= 1.18; }
-    if (batSlowTimer > 0) { controlRateX *= .42; controlRateY *= .42; }
+    let insidePentagonTrap = false;
     for (const o of objects) {
       if (!o || o.hit || o.type !== 'pentagon' || !o.entered) continue;
       const pulseRadius = 150 + Math.sin(performance.now() / 165) * 28;
@@ -3011,8 +3236,6 @@
       if (pd < pulseRadius) {
         if (!reversePulse) {
           insidePentagonTrap = true;
-          const slowAmount = clamp(pd / pulseRadius, .08, .28);
-          controlRateX *= slowAmount; controlRateY *= slowAmount;
         }
         const pentagonPull = isStandActive('crocodile') ? 260 : isStandActive('ram') ? 340 : 780;
         const dir = reversePulse ? -1 : 1;
@@ -3052,11 +3275,8 @@
       }
     }
 
-    player.x += (targetX - player.x) * Math.min(1, dt * controlRateX);
-    player.y += (targetY - player.y) * Math.min(1, dt * controlRateY);
-    player.x += player.vx * dt; player.y += player.vy * dt;
-    player.vx *= insidePentagonTrap ? .91 : .84; player.vy *= insidePentagonTrap ? .91 : .84;
-    player.x = clamp(player.x, player.r + 8, W - player.r - 8); player.y = clamp(player.y, player.r + 60, H - player.r - 8);
+    player.insidePentagonTrap = insidePentagonTrap;
+    updatePlayerMovement(dt);
     updateStandAuras(dt);
 
     if (bulletTimer <= 0) { firePlayerBullet(); bulletTimer = discoActive ? .1 : .18; }
@@ -3945,6 +4165,72 @@
     ctx.restore();
   }
 
+  function drawOxygenUI() {
+    if (!player || !running) return;
+    const tankPct = clamp(player.oxygenTank / player.oxygenTankMax, 0, 1);
+    const breathPct = clamp(player.breathReserve / player.breathReserveMax, 0, 1);
+    const low = !discoActive && (tankPct < .18 || breathPct < .28);
+    const x = W - 34;
+    const y = 104;
+    const h = Math.min(300, H * .42);
+    const w = 12;
+    ctx.save();
+    if (low) {
+      const pulse = .28 + Math.sin(performance.now() / 95) * .12;
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = tankPct < .18 ? '#65d9ff' : '#ff5577';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(6, 6, W - 12, H - 12);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'center';
+      ctx.font = '900 20px Arial';
+      ctx.fillStyle = tankPct < .18 ? '#9be7ff' : '#ff6f8c';
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.fillText('LOW OXYGEN', W / 2, 88);
+      ctx.shadowBlur = 0;
+    }
+
+    function drawBar(label, bx, pct, colorA, colorB) {
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.strokeStyle = 'rgba(255,255,255,.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(bx, y, w, h, 7); else ctx.rect(bx, y, w, h);
+      ctx.fill();
+      ctx.stroke();
+      const fillH = h * pct;
+      const grad = ctx.createLinearGradient(0, y + h, 0, y);
+      grad.addColorStop(0, colorA);
+      grad.addColorStop(1, colorB);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(bx + 2, y + h - fillH + 2, w - 4, Math.max(2, fillH - 4), 5);
+      else ctx.rect(bx + 2, y + h - fillH + 2, w - 4, Math.max(2, fillH - 4));
+      ctx.fill();
+      ctx.save();
+      ctx.translate(bx + w / 2, y + h + 50);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#dffbff';
+      ctx.font = '900 10px Arial';
+      ctx.fillText(label, 0, 4);
+      ctx.restore();
+    }
+
+    drawBar('OXYGEN', x, tankPct, '#1e8fff', '#dffbff');
+    drawBar('BREATH', x - 18, breathPct, breathPct < .3 ? '#ff5577' : '#43ffb1', '#ffffff');
+    ctx.fillStyle = player.propelling ? '#e9fbff' : 'rgba(155,231,255,.78)';
+    ctx.font = '900 11px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText(player.propelling ? 'THRUST' : 'BREATH', W - 12, y - 10);
+    if (player.oxygenRefillTimer > 0) {
+      ctx.fillStyle = '#9be7ff';
+      ctx.fillText('REFILL', W - 12, y + h + 66);
+    }
+    ctx.restore();
+  }
+
   function draw() {
     const ox = shake ? rand(-shake, shake) : 0;
     const oy = shake ? rand(-shake, shake) : 0;
@@ -3958,6 +4244,7 @@
     drawBullets();
     drawPlayerTrail();
     drawPlayer();
+    drawOxygenUI();
     drawEnvironmentOverlays();
     for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life / p.max); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
     for (const ft of floatingTexts) {
@@ -4034,31 +4321,52 @@
   }
 
   function setTargetFromEvent(e) {
+    if (e.target !== canvas || !running || paused || !player) return;
     const rect = canvas.getBoundingClientRect();
-    const oldX = targetX;
-    const oldY = targetY;
-    targetX = e.clientX - rect.left;
-    targetY = e.clientY - rect.top;
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const dx = px - player.x;
+    const dy = py - player.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 6) {
+      mobilePushX = dx / d;
+      mobilePushY = dy / d;
+    } else {
+      mobilePushX = 0;
+      mobilePushY = 0;
+    }
     const now = performance.now();
-    if (running && !paused && now - lastWhooshTime > 360 && Math.hypot(targetX - oldX, targetY - oldY) > 80) {
+    if (now - lastWhooshTime > 520 && d > 80) {
       playSfx('whoosh');
       lastWhooshTime = now;
     }
   }
 
   canvas.addEventListener('pointerdown', e => { pointerDown = true; setTargetFromEvent(e); });
-  canvas.addEventListener('pointermove', e => { if (pointerDown || e.pointerType === 'mouse') setTargetFromEvent(e); });
-  canvas.addEventListener('pointerup', () => { pointerDown = false; });
-  canvas.addEventListener('pointercancel', () => { pointerDown = false; });
-  window.addEventListener('mousemove', e => { if (running) setTargetFromEvent(e); });
+  canvas.addEventListener('pointermove', e => { if (pointerDown) setTargetFromEvent(e); });
+  canvas.addEventListener('pointerup', () => { pointerDown = false; mobilePushX = 0; mobilePushY = 0; });
+  canvas.addEventListener('pointercancel', () => { pointerDown = false; mobilePushX = 0; mobilePushY = 0; });
   window.addEventListener('keydown', e => {
-    if (running && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleStandMenu(); return; }
-    if (running && (e.key === ' ' || e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); togglePause(); return; }
-    if (!running && (e.key === ' ' || e.key === 'Enter')) startGame();
-    if (running && e.key === 'ArrowLeft') targetX = player.x - 70;
-    if (running && e.key === 'ArrowRight') targetX = player.x + 70;
-    if (running && e.key === 'ArrowUp') targetY = player.y - 70;
-    if (running && e.key === 'ArrowDown') targetY = player.y + 70;
+    const movementCodes = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space']);
+    if (!running && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); startGame(); return; }
+    if (running && e.code === 'KeyF') { e.preventDefault(); toggleStandMenu(); return; }
+    if (running && (e.code === 'Escape' || e.code === 'KeyP')) { e.preventDefault(); togglePause(); return; }
+    if (running && movementCodes.has(e.code)) {
+      e.preventDefault();
+      keys[e.code] = true;
+    }
+  });
+  window.addEventListener('keyup', e => {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) {
+      e.preventDefault();
+      keys[e.code] = false;
+    }
+  });
+  window.addEventListener('blur', () => {
+    for (const key in keys) keys[key] = false;
+    pointerDown = false;
+    mobilePushX = 0;
+    mobilePushY = 0;
   });
 
   // Syntax stability patch applied
